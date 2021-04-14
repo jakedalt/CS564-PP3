@@ -1,1 +1,4 @@
-Intended file for design report content
+Intended file for design report content such as
+Any implementation choices that you make.   
+How often do you keep pages pinned?   
+How  efficient  is  your  implementation?   

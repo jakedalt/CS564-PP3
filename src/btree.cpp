@@ -14,6 +14,7 @@
 #include "exceptions/scan_not_initialized_exception.h"
 #include "exceptions/index_scan_completed_exception.h"
 #include "exceptions/file_not_found_exception.h"
+#include "exceptions/file_exists_exception.h"
 #include "exceptions/end_of_file_exception.h"
 
 
@@ -35,16 +36,55 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
     // Add your code below. Please do not remove this line.
 
 	std::ostringstream idxStr;
-	idxStr << relationName << ’.’ << attrByteOffset;
+	idxStr << relationName << '.' << attrByteOffset;
 	// indexName is the name of the index file
 	std::string indexName = idxStr.str();
 
 	outIndexName = indexName; // return name of index file
-	bufMgr = bufMgrIn; // set private BufMgr instance
 
+	// set private variables to the correct values
+	bufMgr = bufMgrIn; // set private BufMgr instance
+	leafOccupancy = INTARRAYLEAFSIZE;
+	nodeOccupancy = INTARRAYNONLEAFSIZE;
 	attributeType = attrType;
 	this->attrByteOffset = attrByteOffset;
 	scanExecuting = false;
+
+	bool fileExisted = false;
+
+	try {
+		file = new BlobFile(outIndexName, true);
+	} catch(FileExistsException &e) {
+		file = new BlobFile(outIndexName, false);
+		fileExisted = true;
+	}
+
+	//if(fileExisted) {
+	//	*file->open(outIndexName); // open file
+	//}
+
+	if(!fileExisted) {
+		// TODO filescan stuff
+	} else { // file exists
+		headerPageNum = file->getFirstPageNo();
+		Page *page = new Page();
+		bufMgr->readPage(file, headerPageNum, page);
+		IndexMetaInfo* idxMeta = new IndexMetaInfo();
+		idxMeta = (IndexMetaInfo*)page;
+		rootPageNum = idxMeta->rootPageNo;
+
+		if(strcmp(idxMeta->relationName, relationName.c_str()) != 0) {
+			throw BadIndexInfoException(outIndexName);
+		}
+		if(idxMeta->attrByteOffset != attrByteOffset) {
+			throw BadIndexInfoException(outIndexName);
+		}
+		if(idxMeta->attrType != attrType) {
+			throw BadIndexInfoException(outIndexName);
+		}
+	}
+
+	
 
 }
 

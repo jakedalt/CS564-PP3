@@ -33,6 +33,19 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 		const Datatype attrType)
 {
     // Add your code below. Please do not remove this line.
+
+	std::ostringstream idxStr;
+	idxStr << relationName << ’.’ << attrByteOffset;
+	// indexName is the name of the index file
+	std::string indexName = idxStr.str();
+
+	outIndexName = indexName; // return name of index file
+	bufMgr = bufMgrIn; // set private BufMgr instance
+
+	attributeType = attrType;
+	this->attrByteOffset = attrByteOffset;
+	scanExecuting = false;
+
 }
 
 
@@ -64,6 +77,43 @@ void BTreeIndex::startScan(const void* lowValParm,
 				   const Operator highOpParm)
 {
     // Add your code below. Please do not remove this line.
+	
+
+	// Integer range values for scan
+	lowValInt = *(int *)lowValParm;
+	highValInt = *(int *)highValParm;
+
+	// Double range values for scan
+	lowValDouble = *(double *)lowValParm;
+	highValDouble = *(double *)highValParm;
+
+	//lowValString = *(std::string *)lowValParm;
+	//highValString = *(std::string *)highValParm;
+	
+	
+	if(lowValInt > highValInt) {
+		throw BadScanrangeException();
+	}
+
+	if(lowOpParm != GT || lowOpParm != GTE) {
+		throw BadOpcodesException();
+	}
+
+	if(highOpParm != LT || highOpParm != LTE) {
+		throw BadOpcodesException();
+	}
+	
+	// check if scan is executing, and if it is, end it
+	if(scanExecuting) {
+		endScan();
+	}
+
+	// set private Operator variables
+	lowOp = lowOpParm;
+	highOp = highOpParm;
+
+	currentPageNum = rootPageNum;
+
 }
 
 // -----------------------------------------------------------------------------
@@ -82,6 +132,18 @@ void BTreeIndex::scanNext(RecordId& outRid)
 void BTreeIndex::endScan() 
 {
     // Add your code below. Please do not remove this line.
+
+	if(!scanExecuting) {
+		throw ScanNotInitializedException();
+	}
+
+	scanExecuting = false;
+
+	// unpin any pinned pages
+	// TODO
+
+	
+
 }
 
 }

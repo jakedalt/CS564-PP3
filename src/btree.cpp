@@ -53,18 +53,52 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 	bool fileExisted = false;
 
 	try {
-		file = new BlobFile(outIndexName, true);
+		file = new BlobFile(outIndexName, true); // check if file exists and open file if it does
 	} catch(FileExistsException &e) {
-		file = new BlobFile(outIndexName, false);
+		file = new BlobFile(outIndexName, false); // create and open file
 		fileExisted = true;
 	}
 
-	//if(fileExisted) {
-	//	*file->open(outIndexName); // open file
-	//}
-
+	// index file does not exist
 	if(!fileExisted) {
-		// TODO filescan stuff
+		Page *headerPage;
+		PageId *pageNum;
+		bufMgr->allocPage(file, *pageNum, headerPage);
+		headerPageNum = *pageNum; // set headerPageNum
+		Page *rootPage;
+		PageId *rPageNum;
+		bufMgr->allocPage(file, *rPageNum, rootPage);
+		rootPageNum = *rPageNum; // set rootPageNum
+
+		// setting indexMetaInfo variables
+		IndexMetaInfo* idxMeta = new IndexMetaInfo();
+		idxMeta = (IndexMetaInfo*)headerPage;
+		idxMeta->rootPageNo = rootPageNum;
+		idxMeta->attrByteOffset = attrByteOffset;
+		idxMeta->attrType = attrType;
+		strcpy(idxMeta->relationName, relationName.c_str());
+
+		LeafNodeInt* leafInt = (LeafNodeInt*)rootPage; // creating leafNodeObject, not sure
+
+		// setting up variables needed for file scanning
+ 		FileScan* fileScan = new FileScan(relationName, bufMgr);
+		RecordId rid;
+		std::string recordPointer;
+
+		bool readingFile = true; // keeps track of if end of file hasn't been reached
+
+		// inserting entries for every tuple in base relation
+		while(readingFile) {
+			try {
+				fileScan->scanNext(rid);
+				recordPointer = fileScan->getRecord();
+				insertEntry((recordPointer.c_str()) + attrByteOffset, rid); 
+			} catch(EndOfFileException &e) {
+				readingFile = false;
+				fileScan->~FileScan();
+			}
+		}		
+
 	} else { // file exists
 		headerPageNum = file->getFirstPageNo();
 		Page *page = new Page();
@@ -83,9 +117,7 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 			throw BadIndexInfoException(outIndexName);
 		}
 	}
-
 	
-
 }
 
 

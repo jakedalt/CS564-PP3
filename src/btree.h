@@ -291,6 +291,11 @@ class BTreeIndex {
    */
 	Operator	highOp;
 
+  /**
+   * Keeps track of whether or not root is leaf.
+   */
+
+	int rootIsLeaf;
 	
  public:
 

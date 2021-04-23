@@ -16,6 +16,7 @@
 #include "exceptions/file_not_found_exception.h"
 #include "exceptions/file_exists_exception.h"
 #include "exceptions/end_of_file_exception.h"
+#include "exceptions/page_pinned_exception.h"
 
 
 //#define DEBUG
@@ -64,10 +65,12 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 		Page *headerPage;
 		PageId *pageNum;
 		bufMgr->allocPage(file, *pageNum, headerPage);
+		bufMgr->unPinPage(file, *pageNum, false);
 		headerPageNum = *pageNum; // set headerPageNum
 		Page *rootPage;
 		PageId *rPageNum;
 		bufMgr->allocPage(file, *rPageNum, rootPage);
+		bufMgr->unPinPage(file, *rPageNum, false);
 		rootPageNum = *rPageNum; // set rootPageNum
 
 		// setting indexMetaInfo variables
@@ -79,6 +82,8 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 		strcpy(idxMeta->relationName, relationName.c_str());
 
 		LeafNodeInt* leafInt = (LeafNodeInt*)rootPage; // creating leafNodeObject, not sure
+		leafInt->rightSibPageNo = 0; // root node does not have right sibling yet		
+		rootIsLeaf = 1;
 
 		// setting up variables needed for file scanning
  		FileScan* fileScan = new FileScan(relationName, bufMgr);
@@ -103,6 +108,7 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 		headerPageNum = file->getFirstPageNo();
 		Page *page = new Page();
 		bufMgr->readPage(file, headerPageNum, page);
+		bufMgr->unPinPage(file, headerPageNum, false);
 		IndexMetaInfo* idxMeta = new IndexMetaInfo();
 		idxMeta = (IndexMetaInfo*)page;
 		rootPageNum = idxMeta->rootPageNo;
@@ -128,6 +134,25 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 BTreeIndex::~BTreeIndex()
 {
     // Add your code below. Please do not remove this line.
+
+	try {
+		endScan();
+	} catch(ScanNotInitializedException &e) {
+
+	}
+		
+	try {
+		bufMgr->flushFile(file);
+	} catch(PagePinnedException &e) { // unpinned pages if this is caught
+		std::cout << "Unpinned pages present.\n";
+	}
+	
+	if(file != NULL) {
+		delete file;
+	}
+
+	file = NULL;
+
 }
 
 // -----------------------------------------------------------------------------
@@ -137,6 +162,9 @@ BTreeIndex::~BTreeIndex()
 void BTreeIndex::insertEntry(const void *key, const RecordId rid) 
 {
     // Add your code below. Please do not remove this line.
+
+	//TODO We created a private int variable called rootIsLeaf that should
+	// be changed to 0 when root is no longer a leaf
 }
 
 // -----------------------------------------------------------------------------
@@ -180,12 +208,99 @@ void BTreeIndex::startScan(const void* lowValParm,
 		endScan();
 	}
 
+	scanExecuting = true;
+
 	// set private Operator variables
 	lowOp = lowOpParm;
 	highOp = highOpParm;
 
 	currentPageNum = rootPageNum;
 
+	bufMgr->readPage(file, currentPageNum, currentPageData);
+
+	LeafNodeInt* root = (LeafNodeInt*)currentPageData;
+
+	if(!rootIsLeaf) {
+		NonLeafNodeInt* currPage = (NonLeafNodeInt*)currentPageData;
+		bool leafFound = false;
+
+		// searching for leaves
+		while(!leafFound) {
+			currPage = (NonLeafNodeInt*)currentPageData;
+			bool pageFound = false;
+			if(currPage->level == 1) {
+				leafFound = true;
+			}
+			for(int i = 0; i < nodeOccupancy; i++) {
+				if(lowValInt < currPage->keyArray[i]) {
+					pageFound = true;
+					bufMgr->unPinPage(file, currentPageNum, false);
+					// set current page to pageNoArray index i when 
+					// lowValInt is smaller than the key to the right of it
+					currentPageNum = currPage->pageNoArray[i];
+					bufMgr->readPage(file, currentPageNum, currentPageData);
+				}
+			}
+			if(!pageFound) {
+				bufMgr->unPinPage(file, currentPageNum, false);
+				// set current page to final node pointer in pageNoArray
+				currentPageNum = currPage->pageNoArray[nodeOccupancy];
+				bufMgr->readPage(file, currentPageNum, currentPageData);
+			}
+		}
+		// we have found the correct leaf node
+		
+		LeafNodeInt* leafPage = (LeafNodeInt*)currentPageData;
+		// used for comparison of key and bound parameters
+		bool usesGt = false;
+		bool usesLt = false;
+		if(lowOpParm == GT) {
+			usesGt = true;
+		}
+		if(highOpParm == LT) {
+			usesLt = true;
+		}
+		
+		bool searching = true;
+		// searching for value that satisfies scan criteria
+		while(searching) {
+			leafPage = (LeafNodeInt*)currentPageData;
+			for(int i = 0; i < leafOccupancy; i++) {
+				if(usesGt) {
+					if(lowValInt >= leafPage->keyArray[i]) {
+						continue;
+					}
+				} else {
+					if(lowValInt > leafPage->keyArray[i]) {
+						continue;
+					} 
+				}
+				if(usesLt) {
+					if(highValInt <= leafPage->keyArray[i]) {
+						throw NoSuchKeyFoundException();
+					}
+				} else {
+					if(highValInt < leafPage->keyArray[i]) {
+						throw NoSuchKeyFoundException();
+					}
+				}
+				searching = false;
+				break;
+			}
+			// if we've reached final leaf node without any key matching scan criteria
+			if(leafPage->rightSibPageNo == 0) {
+				throw NoSuchKeyFoundException();
+			}
+			// search continues to leaf node to the right of the current one
+			if(searching) {
+				bufMgr->unPinPage(file, currentPageNum, false);
+				currentPageNum = leafPage->rightSibPageNo;
+				bufMgr->readPage(file, currentPageNum, currentPageData);
+			}
+		}
+		
+	}
+	
 }
 
 // -----------------------------------------------------------------------------
@@ -195,6 +310,12 @@ void BTreeIndex::startScan(const void* lowValParm,
 void BTreeIndex::scanNext(RecordId& outRid) 
 {
     // Add your code below. Please do not remove this line.
+
+	// if no scan has been initialized, throw error
+	if(!scanExecuting) {
+		throw ScanNotInitializedException();
+	}
+
 }
 
 // -----------------------------------------------------------------------------
@@ -205,6 +326,7 @@ void BTreeIndex::endScan()
 {
     // Add your code below. Please do not remove this line.
 
+	// if no scan has been initialized, throw error
 	if(!scanExecuting) {
 		throw ScanNotInitializedException();
 	}
@@ -212,9 +334,14 @@ void BTreeIndex::endScan()
 	scanExecuting = false;
 
 	// unpin any pinned pages
-	// TODO
-
+	bufMgr->unPinPage(file, currentPageNum, false);
 	
+	// reset scan specific variables
+	scanExecuting = false;
+	nextEntry = -1;
+	currentPageNum = -1;	
+	currentPageData = NULL;
+		
 
 }
 

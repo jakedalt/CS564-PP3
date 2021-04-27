@@ -262,25 +262,26 @@ void BTreeIndex::startScan(const void* lowValParm,
 		}
 		
 		bool searching = true;
+		int keyIndex;
 		// searching for value that satisfies scan criteria
 		while(searching) {
 			leafPage = (LeafNodeInt*)currentPageData;
-			for(int i = 0; i < leafOccupancy; i++) {
+			for(keyIndex = 0; keyIndex < leafOccupancy; keyIndex++) {
 				if(usesGt) {
-					if(lowValInt >= leafPage->keyArray[i]) {
+					if(lowValInt >= leafPage->keyArray[keyIndex]) {
 						continue;
 					}
 				} else {
-					if(lowValInt > leafPage->keyArray[i]) {
+					if(lowValInt > leafPage->keyArray[keyIndex]) {
 						continue;
 					} 
 				}
 				if(usesLt) {
-					if(highValInt <= leafPage->keyArray[i]) {
+					if(highValInt <= leafPage->keyArray[keyIndex]) {
 						throw NoSuchKeyFoundException();
 					}
 				} else {
-					if(highValInt < leafPage->keyArray[i]) {
+					if(highValInt < leafPage->keyArray[keyIndex]) {
 						throw NoSuchKeyFoundException();
 					}
 				}
@@ -288,7 +289,7 @@ void BTreeIndex::startScan(const void* lowValParm,
 				break;
 			}
 			// if we've reached final leaf node without any key matching scan criteria
-			if(leafPage->rightSibPageNo == 0) {
+			if(leafPage->rightSibPageNo == 0 && searching) {
 				throw NoSuchKeyFoundException();
 			}
 			// search continues to leaf node to the right of the current one
@@ -298,7 +299,7 @@ void BTreeIndex::startScan(const void* lowValParm,
 				bufMgr->readPage(file, currentPageNum, currentPageData);
 			}
 		}
-		
+		nextEntry = keyIndex + 1;
 	}
 	
 }
@@ -315,6 +316,60 @@ void BTreeIndex::scanNext(RecordId& outRid)
 	if(!scanExecuting) {
 		throw ScanNotInitializedException();
 	}
+	
+	LeafNodeInt* leafPage = (LeafNodeInt*)currentPageData;
+
+	bool usesGt = false;
+	bool usesLt = false;
+	if(lowOp == GT) {
+		usesGt = true;
+	}
+	if(highOp == LT) {
+		usesLt = true;
+	}
+		
+	bool searching = true;
+	int keyIndex;
+	
+	// searching for value that satisfies scan criteria
+	while(searching) {
+		leafPage = (LeafNodeInt*)currentPageData;
+		for(keyIndex = nextEntry; keyIndex < leafOccupancy; keyIndex++) {
+			if(usesGt) {
+				if(lowValInt >= leafPage->keyArray[keyIndex]) {
+					continue;
+				}
+			} else {
+				if(lowValInt > leafPage->keyArray[keyIndex]) {
+					continue;
+				} 
+			}
+			if(usesLt) {
+				if(highValInt <= leafPage->keyArray[keyIndex]) {
+					throw IndexScanCompletedException();
+				}
+			} else {
+				if(highValInt < leafPage->keyArray[keyIndex]) {
+					throw IndexScanCompletedException();
+				}
+			}
+			searching = false;
+			break;
+		}
+		nextEntry = keyIndex;
+		// if we've reached final leaf node without any key matching scan criteria
+		if(leafPage->rightSibPageNo == 0 && searching) {
+			throw IndexScanCompletedException();
+		}
+		// search continues to leaf node to the right of the current one
+		if(searching) {
+			nextEntry = 0; // start on first index of next page
+			bufMgr->unPinPage(file, currentPageNum, false);
+			currentPageNum = leafPage->rightSibPageNo;
+			bufMgr->readPage(file, currentPageNum, currentPageData);
+		}
+		outRid = leafPage->ridArray[nextEntry];
+	}	
 
 }
 

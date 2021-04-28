@@ -165,6 +165,79 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 
 	//TODO We created a private int variable called rootIsLeaf that should
 	// be changed to 0 when root is no longer a leaf
+	//bool rootIsLeaf = true;
+
+	if (root == NULL) {
+		//create a new page into the buffer manager and add to the b+ tree root leaf
+        
+    }else{
+    	//traverse through the tree and find where the key,id pair should be inserted
+
+		bool isLeaf = false;
+		RIDKeyPair pair = new RIDKeyPair().set(rid,key);
+		// need to compare the new key id pair starting from the root and moving along the leaves.
+
+		Page *RootPage;
+		Page *HeaderPage; // use header page for index
+		bufMgr -> readPage(file,headerPageNum,HeaderPage);
+		IndexMetaInfo* idxMeta = new IndexMetaInfo();
+		idxMeta = (IndexMetaInfo*)headerPage;
+		bufMgr -> readPage(file,idxMeta.rootPageNo,RootPage);
+
+		if(rootIsLeaf){
+			LeafNodeInt cursor = (LeafNodeInt*)RootPage
+		}else{
+			NonLeafNodeInt cursor = (NonLeafNodeInt*)RootPage //get the current root page using pageID
+		}
+		//LeafNodeInt curLeafNode;
+		//using the while loop constantly move through the children from the root while comparing the each the entries in the btree to find the leafe node to place the key value pair
+		while(!isLeaf){
+			//if(pair < )
+			if(rootIsLeaf){
+
+				for(int i =0; i<cursor->keyArray.length; i++){
+					RIDKeyPair curLeafPair = new RIDKeyPair().set(cursor.ridArray[i],cursor.keyArray[i]);
+					if(pair < curLeafPair){
+						//go to the left side of the tree
+					}
+
+					if (i == INTARRAYLEAFSIZE - 1) {
+	                    //reached the end of the current leaf need to go to the next leaf node
+	                    break;
+                	}
+				}
+
+			}else{
+
+			}
+		}
+
+		if(cursor.ridArray.length < INTARRAYLEAFSIZE){
+			//the leafe we found to insert the record id key is not over flowing and we shoudl travers through it till the key fits
+			int i = 0;// found the index where the current pair is greater than the left less than the right
+            while (pair > cursor->ridArray[i]
+                   && i < INTARRAYLEAFSIZE) {
+                i++;
+            }
+
+            for (int j = cursor->ridArray.length;
+                 j > i; j--) {
+                cursor->ridArray[j]
+                    = cursor->ridArray[j - 1];
+            }
+  			
+  			//we found space in the leaf node to set the rid and key
+            cursor->ridArray[i] = rid;
+            cursor->keyArray[i] = key;
+		}else{
+			// handle the case here the current leafe node is overfilling
+
+		}
+	}
+}
+
+void BTreeIndex::insertHelper(){
+
 }
 
 // -----------------------------------------------------------------------------

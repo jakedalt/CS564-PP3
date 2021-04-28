@@ -167,73 +167,85 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 	// be changed to 0 when root is no longer a leaf
 	//bool rootIsLeaf = true;
 
-	if (root == NULL) {
+	if (rootPageNum == NULL) {
 		//create a new page into the buffer manager and add to the b+ tree root leaf
-        LeafNodeInt root = new LeafNodeInt();
-        root->keyArray[0] = key;
+        LeafNodeInt *root = new LeafNodeInt();
+        //root->keyArray[0] = key;
         root->ridArray[0] = rid;
         root->rightSibPageNo = NULL;
     }else{
     	//traverse through the tree and find where the key,id pair should be inserted
 
-		bool isLeaf = false;
-		RIDKeyPair pair = new RIDKeyPair().set(rid,key);
 		// need to compare the new key id pair starting from the root and moving along the leaves.
 
 		Page *RootPage;
 		Page *HeaderPage; // use header page for index
 		bufMgr -> readPage(file,headerPageNum,HeaderPage);
-		bufMgr->unPinPage(file, *headerPageNum, false);
+		bufMgr->unPinPage(file, headerPageNum, false);
 		IndexMetaInfo* idxMeta = new IndexMetaInfo();
-		idxMeta = (IndexMetaInfo*)headerPage;
-		bufMgr -> readPage(file,idxMeta.rootPageNo,RootPage);
-		bufMgr->unPinPage(file, *idxMeta.rootPageNo, false);
+		idxMeta = (IndexMetaInfo*)HeaderPage;
+		bufMgr -> readPage(file,idxMeta->rootPageNo,RootPage);
+		bufMgr->unPinPage(file, idxMeta->rootPageNo, false);
 
-		if(rootIsLeaf){
-			LeafNodeInt cursor = (LeafNodeInt*)RootPage
-		}else{
-			NonLeafNodeInt cursor = (NonLeafNodeInt*)RootPage //get the current root page using pageID
-		}
-		//LeafNodeInt curLeafNode;
-		//using the while loop constantly move through the children from the root while comparing the each the entries in the btree to find the leafe node to place the key value pair
+		bool isLeaf = false;
+		RIDKeyPair<Datatype> *pair;
+		pair->set(rid,key);
+
+		RecordId place_rec_id;
+		Page *place_page;
+		NonLeafNodeInt *cursor = (NonLeafNodeInt*)RootPage; //get the current root page using pageID
+
 		while(!isLeaf){
-			//if(pair < )
-			if(rootIsLeaf){
 
-				for(int i =0; i<cursor->keyArray.length; i++){
-					RIDKeyPair curLeafPair = new RIDKeyPair().set(cursor.ridArray[i],cursor.keyArray[i]);
-					if(pair < curLeafPair){
-						//go to the left side of the tree
+				for(int i =0; i<nodeOccupancy; i++){
+					Page *nextPage;
+	               	bufMgr -> readPage(file,cursor->pageNoArray[i],nextPage);
+					bufMgr->unPinPage(file, cursor->pageNoArray[i], false);
+	              	
+	               	for (PageIterator iter = nextPage->begin();
+				        iter != nextPage->end();
+				        ++iter) {
+				     	RIDKeyPair curLeafPair;
+				     	curLeafPair->set(iter.getCurrentRecord(),cursor->keyArray[i]);
+						if(pair < curLeafPair){
+							//go to the left side of the tree
+							place_rec_id = iter.getCurrentRecord();
+							place_page = nextPage;
+							break;
+						}
+						
 					}
 
 					if (i == leafOccupancy - 1) {
-	                    //reached the end of the current leaf need to go to the next leaf node
-	                    break;
-                	}
+			                //reached the end of the current leaf need to go to the next leaf node
+			                break;
+		              	}
+	                	
 				}
-
-			}else{
-
-			}
 		}
-
-		if(cursor.ridArray.length < leafOccupancy){
+		//LeafNodeInt curLeafNode;
+		//using the while loop constantly move through the children from the root while comparing the each the entries in the btree to find the leafe node to place the key value pair
+		
+		LeafNodeInt *found = (LeafNodeInt*)place_page;
+		//found->ridArray.length 
+		//need to figure out how to get the length of the keys in the current leaf node
+		if(0 < leafOccupancy){
 			//the leafe we found to insert the record id key is not over flowing and we shoudl travers through it till the key fits
 			int i = 0;// found the index where the current pair is greater than the left less than the right
-            while (pair > cursor->ridArray[i]
+            while (pair > found->ridArray[i]
                    && i < leafOccupancy) {
                 i++;
             }
 
-            for (int j = cursor->ridArray.length;
+            for (int j = leafOccupancy;
                  j > i; j--) {
-                cursor->ridArray[j]
-                    = cursor->ridArray[j - 1];
+                found->ridArray[j]
+                    = found->ridArray[j - 1];
             }
   			
   			//we found space in the leaf node to set the rid and key
-            cursor->ridArray[i] = rid;
-            cursor->keyArray[i] = key;
+            found->ridArray[i] = rid;
+            //found->keyArray[i] = key;
 		}else{
 			// handle the case here the current leafe node is overfilling
 

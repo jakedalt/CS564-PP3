@@ -169,7 +169,10 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 
 	if (root == NULL) {
 		//create a new page into the buffer manager and add to the b+ tree root leaf
-        
+        LeafNodeInt root = new LeafNodeInt();
+        root->keyArray[0] = key;
+        root->ridArray[0] = rid;
+        root->rightSibPageNo = NULL;
     }else{
     	//traverse through the tree and find where the key,id pair should be inserted
 
@@ -180,9 +183,11 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 		Page *RootPage;
 		Page *HeaderPage; // use header page for index
 		bufMgr -> readPage(file,headerPageNum,HeaderPage);
+		bufMgr->unPinPage(file, *headerPageNum, false);
 		IndexMetaInfo* idxMeta = new IndexMetaInfo();
 		idxMeta = (IndexMetaInfo*)headerPage;
 		bufMgr -> readPage(file,idxMeta.rootPageNo,RootPage);
+		bufMgr->unPinPage(file, *idxMeta.rootPageNo, false);
 
 		if(rootIsLeaf){
 			LeafNodeInt cursor = (LeafNodeInt*)RootPage
@@ -201,7 +206,7 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 						//go to the left side of the tree
 					}
 
-					if (i == INTARRAYLEAFSIZE - 1) {
+					if (i == leafOccupancy - 1) {
 	                    //reached the end of the current leaf need to go to the next leaf node
 	                    break;
                 	}
@@ -212,11 +217,11 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 			}
 		}
 
-		if(cursor.ridArray.length < INTARRAYLEAFSIZE){
+		if(cursor.ridArray.length < leafOccupancy){
 			//the leafe we found to insert the record id key is not over flowing and we shoudl travers through it till the key fits
 			int i = 0;// found the index where the current pair is greater than the left less than the right
             while (pair > cursor->ridArray[i]
-                   && i < INTARRAYLEAFSIZE) {
+                   && i < leafOccupancy) {
                 i++;
             }
 

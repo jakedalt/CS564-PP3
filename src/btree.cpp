@@ -188,8 +188,9 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 		bufMgr->unPinPage(file, idxMeta->rootPageNo, false);
 
 		bool isLeaf = false;
-		RIDKeyPair<Datatype> *pair;
-		pair->set(rid,key);
+		RIDKeyPair<int> *pair;
+		int *k = (int *) key;
+		pair->set(rid,*k);
 
 		RecordId place_rec_id;
 		Page *place_page;
@@ -205,9 +206,9 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 	               	for (PageIterator iter = nextPage->begin();
 				        iter != nextPage->end();
 				        ++iter) {
-				     	RIDKeyPair curLeafPair;
-				     	curLeafPair->set(iter.getCurrentRecord(),cursor->keyArray[i]);
-						if(pair < curLeafPair){
+	               		RIDKeyPair<int> *comparePair;
+	               		comparePair->set(iter.getCurrentRecord(),cursor->keyArray[i]);
+						if(pair < comparePair){
 							//go to the left side of the tree
 							place_rec_id = iter.getCurrentRecord();
 							place_page = nextPage;
@@ -232,7 +233,7 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 		if(0 < leafOccupancy){
 			//the leafe we found to insert the record id key is not over flowing and we shoudl travers through it till the key fits
 			int i = 0;// found the index where the current pair is greater than the left less than the right
-            while (pair > found->ridArray[i]
+            while (rid.page_number > found->ridArray[i].page_number
                    && i < leafOccupancy) {
                 i++;
             }
@@ -253,9 +254,7 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 	}
 }
 
-void BTreeIndex::insertHelper(){
 
-}
 
 // -----------------------------------------------------------------------------
 // BTreeIndex::startScan

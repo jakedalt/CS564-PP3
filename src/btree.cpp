@@ -78,12 +78,12 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 	try {
 		file = new BlobFile(outIndexName, true);
 		Page *headerPage;
-		PageId *pageNum;
+		PageId *pageNum = nullptr;
 		bufMgr->allocPage(file, *pageNum, headerPage);
 		bufMgr->unPinPage(file, *pageNum, true);
 		headerPageNum = *pageNum; // set headerPageNum
 		Page *rootPage;
-		PageId *rPageNum;
+		PageId *rPageNum = nullptr;
 		bufMgr->allocPage(file, *rPageNum, rootPage);
 		bufMgr->unPinPage(file, *rPageNum, true);
 		rootPageNum = *rPageNum; // set rootPageNum
@@ -228,7 +228,11 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 		Page *place_page;
 		NonLeafNodeInt *cursor = (NonLeafNodeInt*)RootPage; //get the current root page using pageID
 
+		NonLeafNodeInt* parent;
+
 		while(!isLeaf){
+
+			parent = cursor;
 
 				for(int i =0; i<nodeOccupancy; i++){
 					Page *nextPage;
@@ -244,6 +248,7 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 							//go to the left side of the tree
 							place_rec_id = iter.getCurrentRecord();
 							place_page = nextPage;
+							isLeaf = true;
 							break;
 						}
 						
@@ -281,9 +286,240 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
             //found->keyArray[i] = key;
 		}else{
 			// handle the case here the current leafe node is overfilling
+			LeafNodeInt* newLeaf = new LeafNodeInt;
+  
+            PageId virtualNode[leafOccupancy + 1];
+  
+            // Update cursor to virtual
+            // node created
+            for (int i = 0; i < leafOccupancy; i++) {
+                virtualNode[i]
+                    = cursor->pageNoArray[i];
+            }
+            int i = 0, j;
+  
+            // Traverse to find where the new
+            // node is to be inserted
+            while (rid.page_number > virtualNode[i].page_number
+                   && i < leafOccupancy) {
+                i++;
+            }
+  
+            // Update the current virtual
+            // Node to its previous
+            for (int j = leafOccupancy + 1;
+                 j > i; j--) {
+                virtualNode[j]
+                    = virtualNode[j - 1];
+            }
+  
+            virtualNode[i] = rid;
+            //newLeaf->IS_LEAF = true;
+  
+            //cursor->size = (leafOccupancy + 1) / 2;
+            //newLeaf->size
+            //    = leafOccupancy + 1 - (leafOccupancy + 1) / 2;
+  
+            cursor->pageNoArray[sizeof(cursor->keyArray)]
+                = newLeaf;
+  
+            newLeaf->pageNoArray[sizeof(newLeaf->keyArray)]
+                = cursor->pageNoArray[leafOccupancy];
+  
+            cursor->pageNoArray[leafOccupancy] = NULL;
+  
+            // Update the current virtual
+            // Node's key to its previous
+            for (i = 0;
+                 i < sizeof(cursor->ridArray); i++) {
+                cursor->ridArray[i]
+                    = virtualNode[i];
+            }
+  
+            // Update the newLeaf key to
+            // virtual Node
+            for (i = 0, j = sizeof(cursor->ridArray);
+                 i < sizeof(newLeaf->ridArray);
+                 i++, j++) {
+                newLeaf->ridArray[i]
+                    = virtualNode[j];
+            }
+  
+            // If cursor is the root node
+            if (cursor == rootPageNum) {
+  
+                // Create a new Node
+                NonLeafNodeInt* newRoot = new NonLeafNodeInt;
+  
+                // Update rest field of
+                // B+ Tree Node
+                newRoot->ridArray[0] = newLeaf->ridArray[0];
+                int index;
+                for(i = 0;
+                 i < sizeof(cursor->ridArray); i++){
+                	newRoot->pageNoArray[i] = cursor;
+                	index = i
+                }
+                newRoot->pageNoArray[index+ 1] = newLeaf->rightSibPageNo;
+                rootPageNum = newRoot;
+            }
+            else {
+  
+                // Recursive Call for
+                // insert in internal
+                insertInternal(newLeaf->ridArray[sizeof(cursor->keyArray)],
+                               parent,
+                               newLeaf);
+            }
 
 		}
 	}
+}
+
+void BTreeIndex::insertInternal(RecordId x,
+                            NonLeafNodeInt* cursor,
+                            LeafNodeInt* child)
+{
+  
+    // If we doesn't have overflow
+    if (sizeof(cursor->keyArray) < leafOccupancy) {
+        int i = 0;
+  
+        // Traverse the child node
+        // for current cursor node
+        while (x > cursor->keyArray[i]
+               && i < sizeof(cursor->keyArray)) {
+            i++;
+        }
+  
+        // Traverse the cursor node
+        // and update the current key
+        // to its previous node key
+        for (int j = sizeof(cursor->keyArray);
+             j > i; j--) {
+  
+            cursor->keyArray[j]
+                = cursor->keyArray[j - 1];
+        }
+  
+        // Traverse the cursor node
+        // and update the current ptr
+        // to its previous node ptr
+        for (int j = sizeof(cursor->keyArray) + 1;
+             j > i + 1; j--) {
+            cursor->pageNoArray[j]
+                = cursor->pageNoArray[j - 1];
+        }
+  
+        cursor->ridArray[i] = x;
+        cursor->pageNoArray[i + 1] = child;
+    }
+  
+    // For overflow, break the node
+    else {
+  
+        // For new Interval
+        NonLeafNodeInt* newInternal = new NonLeafNodeInt;
+        RecordId virtualKey[leafOccupancy + 1];
+        PageId virtualPtr[leafOccupancy + 2];
+  
+        // Insert the current list key
+        // of cursor node to virtualKey
+        for (int i = 0; i < leafOccupancy; i++) {
+            virtualKey[i] = cursor->keyArray[i];
+        }
+  
+        // Insert the current list ptr
+        // of cursor node to virtualPtr
+        for (int i = 0; i < leafOccupancy + 1; i++) {
+            virtualPtr[i] = cursor->pageNoArray[i];
+        }
+  
+        int i = 0, j;
+  
+        // Traverse to find where the new
+        // node is to be inserted
+        while (x > virtualKey[i]
+               && i < leafOccupancy) {
+            i++;
+        }
+  
+        // Traverse the virtualKey node
+        // and update the current key
+        // to its previous node key
+        for (int j = leafOccupancy + 1;
+             j > i; j--) {
+  
+            virtualKey[j]
+                = virtualKey[j - 1];
+        }
+  
+        virtualKey[i] = rid;
+  
+        // Traverse the virtualKey node
+        // and update the current ptr
+        // to its previous node ptr
+        for (int j = leafOccupancy + 2;
+             j > i + 1; j--) {
+            virtualPtr[j]
+                = virtualPtr[j - 1];
+        }
+  
+        virtualPtr[i + 1] = child;
+        //newInternal->IS_LEAF = false;
+  
+        //cursor->size
+        //    = (leafOccupancy + 1) / 2;
+  
+        //newInternal->size
+        //    = leafOccupancy - (leafOccupancy + 1) / 2;
+  
+        // Insert new node as an
+        // internal node
+        for (i = 0, j = sizeof(cursor->keyArray) + 1;
+             i < newInternal->size;
+             i++, j++) {
+  
+            newInternal->key[i]
+                = virtualKey[j];
+        }
+  
+        for (i = 0, j = sizeof(cursor->keyArray) + 1;
+             i < sizeof(newInternal->keyArray) + 1;
+             i++, j++) {
+  
+            newInternal->pageNoArray[i]
+                = virtualPtr[j];
+        }
+  
+        // If cursor is the root node
+        if (cursor == rootPageNum) {
+  
+            // Create a new root node
+            NonLeafNodeInt* newRoot = new NonLeafNodeInt;
+  
+            // Update key value
+            newRoot->keyArray[0]
+                = cursor->keyArray[sizeof(cursor->keyArray)];
+  
+            // Update rest field of
+            // B+ Tree Node
+            newRoot->pageNoArray[0] = cursor;
+            newRoot->pageNoArray[1] = newInternal;
+            //newRoot->IS_LEAF = false;
+            //newRoot->size = 1;
+            rootPageNum = newRoot;
+        }
+  
+        else {
+  
+            // Recursive Call to insert
+            // the data
+            insertInternal(cursor->key[cursor->size],
+                           cursor,
+                           newInternal);
+        }
+    }
 }
 
 

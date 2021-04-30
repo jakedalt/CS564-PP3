@@ -1,4 +1,42 @@
-Intended file for design report content such as
-Any implementation choices that you make.   
-How often do you keep pages pinned?   
-How  efficient  is  your  implementation?   
+Design Report
+
+Jake Dalton, Jacob Panackal, Rohan Mendiratta, Jaskaran Bakshi
+
+PP3
+
+
+Implementation Choices:
+
+-Created rootIsLeaf private variable to keep track of if root is a leaf node
+	= 1 if root is leaf, = 0 otherwise
+-Set rightSiblingPageNo to 0 if there was no right sibling
+-Unpinned any page that wasn't the current page of the search
+-Used NonLeafNode int variable level to check if a non-leaf node was the parent of a leaf
+	level = 1 if node was parent of leaf, 0 otherwise
+-The way we check whether or not the index file exists is by creating a BlobFile in
+	a try catch block. If we catch a FileExistsException, we will write the code
+	corresponding to a file existing in the catch block. Then the code for a file not
+	existing is in the try block.
+-We end any uninitialized scan by calling endScan in the destructor
+-We keep all pages unpinned except for the current page in the scan, so by calling endScan
+	in the destructor, we successfully unpin any pinned pages prior to flushing file and
+	ending scan.
+-In startScan, we traverse down the tree until we find a leaf node(level = 1), then we make
+	sure that the search criteria is satisfied by some key. The page that corresponds 
+	to the first leaf with a key that satisfies the scan criteria will be kept pinned
+	for the scanNext method.
+-In startScan, we check if the root is a leaf or not. If the root is a leaf, we just set
+	the current page of the scan as the root, and keep it pinned in the bufMgr.
+-In scanNext, we create boolean variables to keep track of what the high and low operator
+	range values are, and use them to check that the scan criteria is satisfied. We 
+	can tell that we've reached the final leaf node if its rightSibPageNo variable is
+	equal to 0.
+-In scanNext, we traverse to the right sibling of the current leaf by setting the currentPageNum
+	to the rightSibPageNo of the current leaf, then we use readPage to read in the
+	right sibling leaf of the current leaf into the currentPageData variable.
+-In endScan, we teerminate the current scan by setting the scanExecuting variable to false, and
+	setting all specific variables to their defaults. We also unpin the current page of the 
+	scan. Because we keep all pages except for the current scan page unpinned, unpinning the
+	current scan page should make it so that all pages in the bufMgr are unpinned by the time
+	this method is completed.
+-In insertEntry... TODO

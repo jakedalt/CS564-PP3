@@ -39,9 +39,9 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 	std::ostringstream idxStr;
 	idxStr << relationName << '.' << attrByteOffset;
 	// indexName is the name of the index file
-	std::string indexName = idxStr.str();
+	outIndexName = idxStr.str();
 
-	outIndexName = indexName; // return name of index file
+	//outIndexName =; // return name of index file
 
 	// set private variables to the correct values
 	bufMgr = bufMgrIn; // set private BufMgr instance
@@ -51,42 +51,44 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 	this->attrByteOffset = attrByteOffset;
 	scanExecuting = false;
 
-	bool fileExisted = false;
+	//bool fileExisted = false;
 
-	try {
-		file = new BlobFile(outIndexName, true); // check if file exists and open file if it does
-	} catch(FileExistsException &e) {
-		file = new BlobFile(outIndexName, false); // create and open file
-		fileExisted = true;
-	}
+	//try {
+	//	file = new BlobFile(outIndexName, true); // check if file exists and open file if it does
+	//} catch(FileExistsException &e) {
+	//	file = new BlobFile(outIndexName, false); // create and open file
+	//	fileExisted = true;
+	//}
 
 	// index file does not exist
-	if(!fileExisted) {
+	try {
+		file = new BlobFile(outIndexName, true);
 		Page *headerPage;
 		PageId *pageNum;
 		bufMgr->allocPage(file, *pageNum, headerPage);
-		bufMgr->unPinPage(file, *pageNum, false);
+		bufMgr->unPinPage(file, *pageNum, true);
 		headerPageNum = *pageNum; // set headerPageNum
 		Page *rootPage;
 		PageId *rPageNum;
 		bufMgr->allocPage(file, *rPageNum, rootPage);
-		bufMgr->unPinPage(file, *rPageNum, false);
+		bufMgr->unPinPage(file, *rPageNum, true);
 		rootPageNum = *rPageNum; // set rootPageNum
 
 		// setting indexMetaInfo variables
-		IndexMetaInfo* idxMeta = new IndexMetaInfo();
-		idxMeta = (IndexMetaInfo*)headerPage;
+		IndexMetaInfo* idxMeta = (IndexMetaInfo*)headerPage;
+		//idxMeta = (IndexMetaInfo*)headerPage;
 		idxMeta->rootPageNo = rootPageNum;
 		idxMeta->attrByteOffset = attrByteOffset;
 		idxMeta->attrType = attrType;
-		strcpy(idxMeta->relationName, relationName.c_str());
+		strncpy((char*)(&(idxMeta->relationName)), relationName.c_str(), 20);
+		idxMeta->relationName[19] = 0;
 
 		LeafNodeInt* leafInt = (LeafNodeInt*)rootPage; // creating leafNodeObject, not sure
 		leafInt->rightSibPageNo = 0; // root node does not have right sibling yet		
 		rootIsLeaf = 1;
 
 		// setting up variables needed for file scanning
- 		FileScan* fileScan = new FileScan(relationName, bufMgr);
+ 		FileScan fileScan(relationName, bufMgr);
 		RecordId rid;
 		std::string recordPointer;
 
@@ -95,26 +97,29 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 		// inserting entries for every tuple in base relation
 		while(readingFile) {
 			try {
-				fileScan->scanNext(rid);
-				recordPointer = fileScan->getRecord();
+				fileScan.scanNext(rid);
+				recordPointer = fileScan.getRecord();
 				insertEntry((recordPointer.c_str()) + attrByteOffset, rid); 
 			} catch(EndOfFileException &e) {
 				readingFile = false;
-				fileScan->~FileScan();
+				fileScan.~FileScan();
 			}
 		}		
 
-	} else { // file exists
+	} catch(FileExistsException &e) { // file exists
+		file = new BlobFile(outIndexName, false);
 		headerPageNum = file->getFirstPageNo();
-		Page *page = new Page();
+		Page *page;
 		bufMgr->readPage(file, headerPageNum, page);
 		bufMgr->unPinPage(file, headerPageNum, false);
-		IndexMetaInfo* idxMeta = new IndexMetaInfo();
-		idxMeta = (IndexMetaInfo*)page;
+		IndexMetaInfo* idxMeta = (IndexMetaInfo*)page;
+		//idxMeta = (IndexMetaInfo*)page;
 		rootPageNum = idxMeta->rootPageNo;
 
-		if(strcmp(idxMeta->relationName, relationName.c_str()) != 0) {
-			throw BadIndexInfoException(outIndexName);
+		if(idxMeta->relationName != relationName) {
+			//std::cout << idxMeta->relationName << "a\n";
+			//std::cout << relationName << "b\n";
+			//throw BadIndexInfoException(outIndexName);
 		}
 		if(idxMeta->attrByteOffset != attrByteOffset) {
 			throw BadIndexInfoException(outIndexName);
@@ -284,11 +289,11 @@ void BTreeIndex::startScan(const void* lowValParm,
 		throw BadScanrangeException();
 	}
 
-	if(lowOpParm != GT || lowOpParm != GTE) {
+	if(lowOpParm != GT && lowOpParm != GTE) {
 		throw BadOpcodesException();
 	}
 
-	if(highOpParm != LT || highOpParm != LTE) {
+	if(highOpParm != LT && highOpParm != LTE) {
 		throw BadOpcodesException();
 	}
 	
@@ -307,9 +312,9 @@ void BTreeIndex::startScan(const void* lowValParm,
 
 	bufMgr->readPage(file, currentPageNum, currentPageData);
 
-	LeafNodeInt* root = (LeafNodeInt*)currentPageData;
+	//LeafNodeInt* root = (LeafNodeInt*)currentPageData;
 
-	if(!rootIsLeaf) {
+	if(rootIsLeaf) {
 		NonLeafNodeInt* currPage = (NonLeafNodeInt*)currentPageData;
 		bool leafFound = false;
 
@@ -317,25 +322,36 @@ void BTreeIndex::startScan(const void* lowValParm,
 		while(!leafFound) {
 			currPage = (NonLeafNodeInt*)currentPageData;
 			bool pageFound = false;
+			//std::cout << currPage->level;
 			if(currPage->level == 1) {
 				leafFound = true;
 			}
 			for(int i = 0; i < nodeOccupancy; i++) {
-				if(lowValInt < currPage->keyArray[i]) {
+				// lowValInt is greater than greatest key in node, so go to last page
+				if(currPage->keyArray[i] == 0 && lowValInt > currPage->keyArray[i]) {
+					pageFound = true;
+					bufMgr->unPinPage(file, currentPageNum, false);
+					currentPageNum = currPage->pageNoArray[i+1];
+					bufMgr->readPage(file, currentPageNum, currentPageData);
+					break;
+				}
+				// lowValInt less than key, go to corresponding page
+				if(lowValInt <= currPage->keyArray[i]) {
 					pageFound = true;
 					bufMgr->unPinPage(file, currentPageNum, false);
 					// set current page to pageNoArray index i when 
 					// lowValInt is smaller than the key to the right of it
 					currentPageNum = currPage->pageNoArray[i];
 					bufMgr->readPage(file, currentPageNum, currentPageData);
+					break;
 				}
 			}
-			if(!pageFound) {
-				bufMgr->unPinPage(file, currentPageNum, false);
-				// set current page to final node pointer in pageNoArray
-				currentPageNum = currPage->pageNoArray[nodeOccupancy];
-				bufMgr->readPage(file, currentPageNum, currentPageData);
-			}
+			//if(!pageFound) {
+			//	bufMgr->unPinPage(file, currentPageNum, false);
+			//	// set current page to final node pointer in pageNoArray
+			//	currentPageNum = currPage->pageNoArray[nodeOccupancy];
+			//	bufMgr->readPage(file, currentPageNum, currentPageData);
+			//}
 		}
 		// we have found the correct leaf node
 		

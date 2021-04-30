@@ -142,6 +142,10 @@ at this level are just above the leaf nodes. Otherwise set to 0.
 */
 struct NonLeafNodeInt{
   /**
+   * Protects first actual variable in struct from being filled with mysterious number
+   */
+	int bodyguard;
+  /**
    * Level of the node in the tree.
    */
 	int level;
@@ -162,6 +166,10 @@ struct NonLeafNodeInt{
  * @brief Structure for all leaf nodes when the key is of INTEGER type.
 */
 struct LeafNodeInt{
+  /**
+   * Protects first actual variable in struct from being filled with mysterious number
+   */
+	int bodyguard;
   /**
    * Stores keys.
    */

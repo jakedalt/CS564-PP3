@@ -28,6 +28,20 @@ namespace badgerdb
 // BTreeIndex::BTreeIndex -- Constructor
 // -----------------------------------------------------------------------------
 
+/**
+   * BTreeIndex Constructor. 
+	 * Check to see if the corresponding index file exists. If so, open the file.
+	 * If not, create it and insert entries for every tuple in the base relation using FileScan class.
+   *
+   * @param relationName        Name of file.
+   * @param outIndexName        Return the name of index file.
+   * @param bufMgrIn						Buffer Manager Instance
+   * @param attrByteOffset			Offset of attribute, over which index is to be built, in the record
+   * @param attrType						Datatype of attribute over which index is built
+   * @throws  BadIndexInfoException     If the index file already exists for the corresponding attribute, but values in
+     metapage(relationName, attribute byte offset, attribute type etc.) 
+     do not match with values received through constructor parameters.
+   */
 BTreeIndex::BTreeIndex(const std::string & relationName,
 		std::string & outIndexName,
 		BufMgr *bufMgrIn,
@@ -135,7 +149,12 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 // -----------------------------------------------------------------------------
 // BTreeIndex::~BTreeIndex -- destructor
 // -----------------------------------------------------------------------------
-
+/**
+   * BTreeIndex Destructor. 
+	 * End any initialized scan, flush index file, after unpinning any pinned pages, from the buffer manager
+	 * and delete file instance thereby closing the index file.
+	 * Destructor should not throw any exceptions. All exceptions should be caught in here itself. 
+*/
 BTreeIndex::~BTreeIndex()
 {
     // Add your code below. Please do not remove this line.
@@ -163,7 +182,15 @@ BTreeIndex::~BTreeIndex()
 // -----------------------------------------------------------------------------
 // BTreeIndex::insertEntry
 // -----------------------------------------------------------------------------
-
+/**
+	 * Insert a new entry using the pair <value,rid>. 
+	 * Start from root to recursively find out the leaf to insert the entry in. The insertion may cause splitting of leaf node.
+	 * This splitting will require addition of new leaf page number entry into the parent non-leaf, which may in-turn get split.
+	 * This may continue all the way upto the root causing the root to get split. If root gets split, metapage needs to be changed accordingly.
+	 * Make sure to unpin pages as soon as you can.
+   * @param key			Key to insert, pointer to integer/double/char string
+   * @param rid			Record ID of a record whose entry is getting inserted into the index.
+	**/
 void BTreeIndex::insertEntry(const void *key, const RecordId rid) 
 {
     // Add your code below. Please do not remove this line.
@@ -264,7 +291,21 @@ void BTreeIndex::insertEntry(const void *key, const RecordId rid)
 // -----------------------------------------------------------------------------
 // BTreeIndex::startScan
 // -----------------------------------------------------------------------------
-
+/**
+	 * Begin a filtered scan of the index.  For instance, if the method is called 
+	 * using ("a",GT,"d",LTE) then we should seek all entries with a value 
+	 * greater than "a" and less than or equal to "d".
+	 * If another scan is already executing, that needs to be ended here.
+	 * Set up all the variables for scan. Start from root to find out the leaf page that contains the first RecordID
+	 * that satisfies the scan parameters. Keep that page pinned in the buffer pool.
+   * @param lowVal	Low value of range, pointer to integer / double / char string
+   * @param lowOp		Low operator (GT/GTE)
+   * @param highVal	High value of range, pointer to integer / double / char string
+   * @param highOp	High operator (LT/LTE)
+   * @throws  BadOpcodesException If lowOp and highOp do not contain one of their their expected values 
+   * @throws  BadScanrangeException If lowVal > highval
+	 * @throws  NoSuchKeyFoundException If there is no key in the B+ tree that satisfies the scan criteria.
+	**/
 void BTreeIndex::startScan(const void* lowValParm,
 				   const Operator lowOpParm,
 				   const void* highValParm,
@@ -314,7 +355,7 @@ void BTreeIndex::startScan(const void* lowValParm,
 
 	//LeafNodeInt* root = (LeafNodeInt*)currentPageData;
 
-	if(rootIsLeaf) {
+	if(!rootIsLeaf) {
 		NonLeafNodeInt* currPage = (NonLeafNodeInt*)currentPageData;
 		bool leafFound = false;
 
@@ -405,6 +446,10 @@ void BTreeIndex::startScan(const void* lowValParm,
 			}
 		}
 		nextEntry = keyIndex + 1;
+	} else { // make root current page in scan if it is a leaf
+		currentPageNum = rootPageNum;
+		bufMgr->readPage(file, currentPageNum, currentPageData);
+		nextEntry = 0;	
 	}
 	
 }
@@ -412,7 +457,13 @@ void BTreeIndex::startScan(const void* lowValParm,
 // -----------------------------------------------------------------------------
 // BTreeIndex::scanNext
 // -----------------------------------------------------------------------------
-
+/**
+	 * Fetch the record id of the next index entry that matches the scan.
+	 * Return the next record from current page being scanned. If current page has been scanned to its entirety, move on to the right sibling of current page, if any exists, to start scanning that page. Make sure to unpin any pages that are no longer required.
+   * @param outRid	RecordId of next record found that satisfies the scan criteria returned in this
+	 * @throws ScanNotInitializedException If no scan has been initialized.
+	 * @throws IndexScanCompletedException If no more records, satisfying the scan criteria, are left to be scanned.
+	**/
 void BTreeIndex::scanNext(RecordId& outRid) 
 {
     // Add your code below. Please do not remove this line.
@@ -422,6 +473,7 @@ void BTreeIndex::scanNext(RecordId& outRid)
 		throw ScanNotInitializedException();
 	}
 	
+	// could be affected by startScan	
 	LeafNodeInt* leafPage = (LeafNodeInt*)currentPageData;
 
 	bool usesGt = false;
@@ -440,20 +492,20 @@ void BTreeIndex::scanNext(RecordId& outRid)
 	while(searching) {
 		leafPage = (LeafNodeInt*)currentPageData;
 		for(keyIndex = nextEntry; keyIndex < leafOccupancy; keyIndex++) {
-			if(usesGt) {
+			if(usesGt) { // not in criteria, if key <= lowValInt
 				if(lowValInt >= leafPage->keyArray[keyIndex]) {
 					continue;
 				}
-			} else {
+			} else { // not in criteria if key < lowValInt
 				if(lowValInt > leafPage->keyArray[keyIndex]) {
 					continue;
 				} 
 			}
-			if(usesLt) {
+			if(usesLt) { // not in criteria if key > highValInt
 				if(highValInt <= leafPage->keyArray[keyIndex]) {
 					throw IndexScanCompletedException();
 				}
-			} else {
+			} else { // not in criteria if key >= highValInt
 				if(highValInt < leafPage->keyArray[keyIndex]) {
 					throw IndexScanCompletedException();
 				}
@@ -481,7 +533,10 @@ void BTreeIndex::scanNext(RecordId& outRid)
 // -----------------------------------------------------------------------------
 // BTreeIndex::endScan
 // -----------------------------------------------------------------------------
-//
+/**
+	 * Terminate the current scan. Unpin any pinned pages. Reset scan specific variables.
+	 * @throws ScanNotInitializedException If no scan has been initialized.
+	**/
 void BTreeIndex::endScan() 
 {
     // Add your code below. Please do not remove this line.

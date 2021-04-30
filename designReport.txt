@@ -39,4 +39,7 @@ Implementation Choices:
 	scan. Because we keep all pages except for the current scan page unpinned, unpinning the
 	current scan page should make it so that all pages in the bufMgr are unpinned by the time
 	this method is completed.
+-In btree.h, we added a variable to NonLeafNodeInt and LeafNodeInt structs that somehow protects
+	the variables underneath it from being filled with a suspiciously mysterious number "535822336".
+	The variable, int bodyguard, is then filled with that number for some reason.
 -In insertEntry... TODO

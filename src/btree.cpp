@@ -74,7 +74,9 @@ namespace badgerdb {
 
         // index file does not exist
         try {
+        	//std::cout << "opening file";
             file = new BlobFile(outIndexName, true);
+            //std::cout << "opened file";
             Page *headerPage;
             PageId *pageNum = nullptr;
             bufMgr->allocPage(file, *pageNum, headerPage);
@@ -317,7 +319,6 @@ namespace badgerdb {
                 //newLeaf->IS_LEAF = true;
 
                 cursor->level++;
-            	newInternal->level = cursor->level + 1;
                 //cursor->size = (leafOccupancy + 1) / 2;
                 //newLeaf->size
                 //    = leafOccupancy + 1 - (leafOccupancy + 1) / 2;

@@ -343,6 +343,9 @@ class BTreeIndex {
 	**/
 	void insertEntry(const void* key, const RecordId rid);
 
+/*
+ * Helper method for insertEntry
+*/
   void insertInternal(int k, RecordId x,
                             NonLeafNodeInt* cursor,
                             void* child, RecordId cursorRID, PageId child_page_id);

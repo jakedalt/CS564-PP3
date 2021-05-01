@@ -78,7 +78,7 @@ namespace badgerdb {
             file = new BlobFile(outIndexName, true);
             
             Page *headerPage;
-            PageId *pageNum = nullptr;
+            PageId *pageNum;
             std::cout << "creating header\n";
             bufMgr->allocPage(file, *pageNum, headerPage);
             std::cout << "allocated header\n";

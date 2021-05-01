@@ -48,6 +48,8 @@ clean:
 	rm -rf $(LIB)/*;\
 	rm -rf src/exceptions/*.o;\
 	rm -f src/badgerdb_main
+	rm -f src/relA
+	rm -f src/relA.0
 
 doc:
 	doxygen Doxyfile

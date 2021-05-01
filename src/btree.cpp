@@ -78,7 +78,7 @@ namespace badgerdb {
             file = new BlobFile(outIndexName, true);
             
             Page *headerPage;
-            PageId *pageNum = nullptr;
+            PageId *pageNum;
             std::cout << "creating header\n";
             bufMgr->allocPage(file, *pageNum, headerPage);
             std::cout << "allocated header\n";
@@ -184,6 +184,7 @@ namespace badgerdb {
         file = NULL;
 
     }
+
 
 /**
 * Insert a key and a record ID to the appropriate position and array of the given leaf node.
@@ -447,6 +448,7 @@ void BTreeIndex::insertEntryHelper(const int key,
 void BTreeIndex::insertEntry(const void *key, const RecordId rid) 
 {
 	// Call the helper function to do the recursion while retrieving back new middle value and pageId if there is a split
+	std::cout << "starting.\n";
 	int middleValueFromChild;
 	PageId newlyCreatedPageId;
 	insertEntryHelper(*(int*)key, rid, rootPageNum, &middleValueFromChild, &newlyCreatedPageId, rootIsLeaf);

@@ -47,13 +47,10 @@ namespace badgerdb {
                            const int attrByteOffset,
                            const Datatype attrType) {
         // Add your code below. Please do not remove this line.
-    	std::cout << "starting\n";
         std::ostringstream idxStr;
         idxStr << relationName << '.' << attrByteOffset;
         // indexName is the name of the index file
         outIndexName = idxStr.str();
-
-        //outIndexName =; // return name of index file
 
         // set private variables to the correct values
         bufMgr = bufMgrIn; // set private BufMgr instance
@@ -63,36 +60,21 @@ namespace badgerdb {
         this->attrByteOffset = attrByteOffset;
         scanExecuting = false;
 
-        //bool fileExisted = false;
-
-        //try {
-        //	file = new BlobFile(outIndexName, true); // check if file exists and open file if it does
-        //} catch(FileExistsException &e) {
-        //	file = new BlobFile(outIndexName, false); // create and open file
-        //	fileExisted = true;
-        //}
-
         // index file does not exist
         try {
-        	std::cout << "opening file\n";
             file = new BlobFile(outIndexName, true);
             
             Page *headerPage;
             PageId *pageNum;
-            std::cout << "creating header\n";
             bufMgr->allocPage(file, *pageNum, headerPage);
-            std::cout << "allocated header\n";
             bufMgr->unPinPage(file, *pageNum, true);
             headerPageNum = *pageNum; // set headerPageNum
             Page *rootPage;
             PageId *rPageNum;
-            std::cout << "creating root\n";
             bufMgr->allocPage(file, *rPageNum, rootPage);
-            std::cout << "alloced index\n";
             bufMgr->unPinPage(file, *rPageNum, true);
             rootPageNum = *rPageNum; // set rootPageNum
 
-            std::cout << "creating index\n";
             // setting indexMetaInfo variables
             IndexMetaInfo *idxMeta = (IndexMetaInfo *) headerPage;
             //idxMeta = (IndexMetaInfo*)headerPage;
@@ -102,19 +84,16 @@ namespace badgerdb {
             strncpy((char *) (&(idxMeta->relationName)), relationName.c_str(), 20);
             idxMeta->relationName[19] = 0;
 
-            std::cout << "creating root leaf\n";
             LeafNodeInt *leafInt = (LeafNodeInt *) rootPage; // creating leafNodeObject, not sure
             leafInt->rightSibPageNo = 0; // root node does not have right sibling yet
             rootIsLeaf = 1;
 
-            std::cout << "scanning file\n";
             // setting up variables needed for file scanning
             FileScan fileScan(relationName, bufMgr);
             RecordId rid;
             std::string recordPointer;
 
             bool readingFile = true; // keeps track of if end of file hasn't been reached
-            std::cout << "reading file\n";
             // inserting entries for every tuple in base relation
             while (readingFile) {
                 try {
@@ -134,12 +113,9 @@ namespace badgerdb {
             bufMgr->readPage(file, headerPageNum, page);
             bufMgr->unPinPage(file, headerPageNum, false);
             IndexMetaInfo *idxMeta = (IndexMetaInfo *) page;
-            //idxMeta = (IndexMetaInfo*)page;
             rootPageNum = idxMeta->rootPageNo;
 
             if (idxMeta->relationName != relationName) {
-                //std::cout << idxMeta->relationName << "a\n";
-                //std::cout << relationName << "b\n";
                 //throw BadIndexInfoException(outIndexName);
             }
             if (idxMeta->attrByteOffset != attrByteOffset) {
@@ -165,18 +141,21 @@ namespace badgerdb {
     BTreeIndex::~BTreeIndex() {
         // Add your code below. Please do not remove this line.
 
+	// ends any initialized scan
         try {
             endScan();
         } catch (ScanNotInitializedException &e) {
 
         }
-
+	
+	// flushes file
         try {
             bufMgr->flushFile(file);
         } catch (PagePinnedException &e) { // unpinned pages if this is caught
             std::cout << "Unpinned pages present.\n";
         }
 
+	// deletes file
         if (file != NULL) {
             delete file;
         }
@@ -200,10 +179,6 @@ namespace badgerdb {
     void BTreeIndex::insertEntry(const void *key, const RecordId rid) {
         // Add your code below. Please do not remove this line.
 
-        //TODO We created a private int variable called rootIsLeaf that should
-        // be changed to 0 when root is no longer a leaf
-        //bool rootIsLeaf = true;
-        std::cout << "starting\n";
         int* k = (int *) key;
         if (rootPageNum == 2) {
             //create a new page into the buffer manager and add to the b+ tree root leaf
@@ -272,7 +247,6 @@ namespace badgerdb {
 
                 }
             }
-            //LeafNodeInt curLeafNode;
             //using the while loop constantly move through the children from the root while comparing the each the entries in the btree to find the leafe node to place the key value pair
 
             LeafNodeInt *found = (LeafNodeInt *) place_page;
@@ -294,7 +268,6 @@ namespace badgerdb {
 
                 //we found space in the leaf node to set the rid and key
                 found->ridArray[i] = rid;
-                //found->keyArray[i] = key;
             } else {
                 // handle the case here the current leafe node is overfilling
                 LeafNodeInt *newLeaf = new LeafNodeInt;
@@ -329,12 +302,8 @@ namespace badgerdb {
                 }
 
                 virtualNode[i] = *k;
-                //newLeaf->IS_LEAF = true;
 
                 cursor->level=1;
-                //cursor->size = (leafOccupancy + 1) / 2;
-                //newLeaf->size
-                //    = leafOccupancy + 1 - (leafOccupancy + 1) / 2;
 
                 cursor->pageNoArray[sizeof(cursor->keyArray)]
                         = rid.page_number;
@@ -494,14 +463,6 @@ namespace badgerdb {
             //newInternal->IS_LEAF = false;
             cursor->level = 0;
             newInternal->level = 1;
-            //cursor->size
-            //    = (leafOccupancy + 1) / 2;
-
-            //newInternal->size
-            //    = leafOccupancy - (leafOccupancy + 1) / 2;
-
-            // Insert new node as an
-            // internal node
             for (i = 0, j = sizeof(cursor->keyArray) + 1;
                  i < sizeof(newInternal->keyArray);
                  i++, j++) {
@@ -538,8 +499,6 @@ namespace badgerdb {
                 // B+ Tree Node
                 newRoot->pageNoArray[0] = cursorRID.page_number;
                 newRoot->pageNoArray[1] = *nPageNum;
-                //newRoot->IS_LEAF = false;
-                //newRoot->size = 1;
                 rootPageNum = *newPageNum;
             } else {
 
@@ -587,9 +546,6 @@ namespace badgerdb {
         lowValDouble = *(double *) lowValParm;
         highValDouble = *(double *) highValParm;
 
-        //lowValString = *(std::string *)lowValParm;
-        //highValString = *(std::string *)highValParm;
-
 
         if (lowValInt > highValInt) {
             throw BadScanrangeException();
@@ -618,9 +574,7 @@ namespace badgerdb {
 
         bufMgr->readPage(file, currentPageNum, currentPageData);
 
-        //LeafNodeInt* root = (LeafNodeInt*)currentPageData;
-
-        if (!rootIsLeaf) {
+        if (!rootIsLeaf) { // traverse tree if root is not the only node
             NonLeafNodeInt *currPage = (NonLeafNodeInt *) currentPageData;
             bool leafFound = false;
 
@@ -628,7 +582,7 @@ namespace badgerdb {
             while (!leafFound) {
                 currPage = (NonLeafNodeInt *) currentPageData;
                 bool pageFound = false;
-                //std::cout << currPage->level;
+		// end while loop if we have reached the correct leaf
                 if (currPage->level == 1) {
                     leafFound = true;
                 }
@@ -652,15 +606,9 @@ namespace badgerdb {
                         break;
                     }
                 }
-                //if(!pageFound) {
-                //	bufMgr->unPinPage(file, currentPageNum, false);
-                //	// set current page to final node pointer in pageNoArray
-                //	currentPageNum = currPage->pageNoArray[nodeOccupancy];
-                //	bufMgr->readPage(file, currentPageNum, currentPageData);
-                //}
             }
             // we have found the correct leaf node
-
+		
             LeafNodeInt *leafPage = (LeafNodeInt *) currentPageData;
             // used for comparison of key and bound parameters
             bool usesGt = false;
@@ -679,19 +627,20 @@ namespace badgerdb {
                 leafPage = (LeafNodeInt *) currentPageData;
                 for (keyIndex = 0; keyIndex < leafOccupancy; keyIndex++) {
                     if (usesGt) {
+			// not in criteria, if key <= lowValInt
                         if (lowValInt >= leafPage->keyArray[keyIndex]) {
                             continue;
                         }
-                    } else {
+                    } else { // not in criteria, if key < lowValInt
                         if (lowValInt > leafPage->keyArray[keyIndex]) {
                             continue;
                         }
                     }
-                    if (usesLt) {
+                    if (usesLt) { // not in criteria, if key <= highValInt
                         if (highValInt <= leafPage->keyArray[keyIndex]) {
                             throw NoSuchKeyFoundException();
                         }
-                    } else {
+                    } else { // not in criteria, if key < highValInt
                         if (highValInt < leafPage->keyArray[keyIndex]) {
                             throw NoSuchKeyFoundException();
                         }
@@ -710,11 +659,11 @@ namespace badgerdb {
                     bufMgr->readPage(file, currentPageNum, currentPageData);
                 }
             }
-            nextEntry = keyIndex + 1;
+            nextEntry = keyIndex + 1; // set nextEntry to next key in keyArray of current page
         } else { // make root current page in scan if it is a leaf
             currentPageNum = rootPageNum;
             bufMgr->readPage(file, currentPageNum, currentPageData);
-            nextEntry = 0;
+            nextEntry = 0; // reset next entry, because we reach new page
         }
 
     }
@@ -737,9 +686,9 @@ namespace badgerdb {
             throw ScanNotInitializedException();
         }
 
-        // could be affected by startScan
         LeafNodeInt *leafPage = (LeafNodeInt *) currentPageData;
 
+	// initializing search variables
         bool usesGt = false;
         bool usesLt = false;
         if (lowOp == GT) {

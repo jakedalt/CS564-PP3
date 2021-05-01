@@ -316,6 +316,8 @@ namespace badgerdb {
                 virtualNode[i] = *k;
                 //newLeaf->IS_LEAF = true;
 
+                cursor->level++;
+            	newInternal->level = cursor->level + 1;
                 //cursor->size = (leafOccupancy + 1) / 2;
                 //newLeaf->size
                 //    = leafOccupancy + 1 - (leafOccupancy + 1) / 2;

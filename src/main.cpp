@@ -41,7 +41,7 @@ using namespace badgerdb;
 // -----------------------------------------------------------------------------
 const std::string relationName = "relA";
 //If the relation size is changed then the second parameter 2 chechPassFail may need to be changed to number of record that are expected to be found during the scan, else tests will erroneously be reported to have failed.
-const int	relationSize = 5000;
+int	relationSize = 5000;
 std::string intIndexName, doubleIndexName, stringIndexName;
 
 // This is the structure for tuples in the base relation
@@ -59,6 +59,10 @@ std::string dbRecord1;
 
 BufMgr * bufMgr = new BufMgr(100);
 
+std::vector<int> *createTrueRandom(int from, int to, int rate);
+
+void randomIntTests(std::vector<int> *sortedvec);
+
 // -----------------------------------------------------------------------------
 // Forward declarations
 // -----------------------------------------------------------------------------
@@ -70,8 +74,15 @@ void intTests();
 int intScan(BTreeIndex *index, int lowVal, Operator lowOp, int highVal, Operator highOp);
 void indexTests();
 void test1();
+void test_int_out_of_bound();
+void randomIntTests();
 void test2();
 void test3();
+void test4_out_of_bound();
+void test5_noncontiguous_random();
+void test6_contiguous_ascending_stress();
+void test7contiguous_descending_stress();
+void test8_contiguous_random_stress();
 void errorTests();
 void deleteRelation();
 
@@ -177,6 +188,48 @@ void test3()
 	deleteRelation();
 }
 
+void test4_out_of_bound() {
+  std::cout << "---------------------" << std::endl;
+  std::cout << "test4_out_of_bound" << std::endl;
+  createRelationRandom();
+  test_int_out_of_bound();
+  deleteRelation();
+}
+
+void test5_noncontiguous_random() {
+  std::cout << "---------------------" << std::endl;
+  std::cout << "test5_noncontiguous_random" << std::endl;
+  std::vector<int> *sortedvec =
+      createTrueRandom(-relationSize, relationSize, 10);
+  randomIntTests(sortedvec);
+  free(sortedvec);
+  deleteRelation();
+}
+
+void test6_contiguous_ascending_stress() {
+  std::cout << "---------------------" << std::endl;
+  std::cout << "test6_contiguous_ascending_stress" << std::endl;
+  relationSize = 350000;
+  createRelationForward();
+  intTests();
+  deleteRelation();
+}
+
+void test7_contiguous_descending_stress() {
+  std::cout << "---------------------" << std::endl;
+  std::cout << "test7_contiguous_descending_stress" << std::endl;
+  createRelationBackward();
+  intTests();
+  deleteRelation();
+}
+
+void test8_contiguous_random_stress() {
+  std::cout << "---------------------" << std::endl;
+  std::cout << "test8_contiguous_random_stress" << std::endl;
+  createRelationRandom();
+  intTests();
+  deleteRelation();
+}
 // -----------------------------------------------------------------------------
 // createRelationForward
 // -----------------------------------------------------------------------------
@@ -354,6 +407,41 @@ void indexTests()
   {
   }
 }
+
+void test_int_out_of_bound() {
+  std::cout << "Create a B+ Tree index on the integer field" << std::endl;
+  BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple, i),
+                   INTEGER);
+
+  checkPassFail(intScan(&index, 3000, GTE, 6000, LT), 2000);
+  checkPassFail(intScan(&index, 4999, GTE, 5010, LT), 1);
+
+  checkPassFail(intScan(&index, 5500, GTE, 6000, LT), 0);
+  checkPassFail(intScan(&index, 4999, GT, 6000, LT), 0);
+  checkPassFail(intScan(&index, -3000, GT, 0, LT), 0);
+
+  checkPassFail(intScan(&index, -3000, GT, 0, LTE), 1);
+  checkPassFail(intScan(&index, -3000, GT, 5, LTE), 6);
+  checkPassFail(intScan(&index, -3000, GT, 200, LT), 200);
+}
+
+void randomIntTests(std::vector<int> *sortedvec) {
+  std::cout << "Create a B+ Tree index on the integer field" << std::endl;
+  BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple, i),
+                   INTEGER);
+  std::vector<int> resultvec;
+
+  int minVal = sortedvec->front();
+  int maxVal = sortedvec->back();
+  int numElem = sortedvec->size();
+
+  checkPassFail(intScan(&index, minVal, GTE, maxVal, LTE), numElem);
+  if (*sortedvec == resultvec)
+    std::cout << "Random int test passed at line no:" << __LINE__ << std::endl;
+  else
+    std::cout << "Random int test failed at line no:" << __LINE__ << std::endl;
+}
+
 
 // -----------------------------------------------------------------------------
 // intTests
@@ -558,6 +646,54 @@ void errorTests()
   catch(const FileNotFoundException &e)
   {
   }
+}
+
+// p = (rate - 1) / rate
+bool randBool(int rate) { return (rand() % rate) == 0; }
+
+std::vector<int> *createTrueRandom(int from, int to, int rate) {
+  // destroy any old copies of relation file
+  try {
+    File::remove(relationName);
+  } catch (FileNotFoundException e) {
+  }
+  file1 = new PageFile(relationName, true);
+
+  // initialize all of record1.s to keep purify happy
+  memset(record1.s, ' ', sizeof(record1.s));
+  PageId new_page_number;
+  Page new_page = file1->allocatePage(new_page_number);
+
+  // insert records in random order
+
+  std::vector<int> *sorted_vec = new std::vector<int>;
+
+  for (int i = from; i < to; i++)
+    if (randBool(rate)) sorted_vec->push_back(i);
+
+  std::vector<int> shufflevec = *sorted_vec;
+  std::random_shuffle(shufflevec.begin(), shufflevec.end());
+
+  for (int val : shufflevec) {
+    sprintf(record1.s, "%05d string record", val);
+    record1.i = val;
+    record1.d = val;
+
+    std::string new_data(reinterpret_cast<char *>(&record1), sizeof(RECORD));
+
+    while (1) {
+      try {
+        new_page.insertRecord(new_data);
+        break;
+      } catch (InsufficientSpaceException e) {
+        file1->writePage(new_page_number, new_page);
+        new_page = file1->allocatePage(new_page_number);
+      }
+    }
+  }
+
+  file1->writePage(new_page_number, new_page);
+  return sorted_vec;
 }
 
 void deleteRelation()

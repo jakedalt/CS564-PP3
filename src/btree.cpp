@@ -476,7 +476,8 @@ namespace badgerdb {
 
             virtualPtr[i + 1] = leaf_child->ridArray[0].page_number;
             //newInternal->IS_LEAF = false;
-
+            cursor->level++;
+            newInternal->level = cursor->level + 1;
             //cursor->size
             //    = (leafOccupancy + 1) / 2;
 
@@ -506,6 +507,7 @@ namespace badgerdb {
 
                 // Create a new root node
                 NonLeafNodeInt *newRoot = new NonLeafNodeInt;
+                newRoot->level = 0;
                 Page *newPage;
                 PageId *newPageNum;
                 bufMgr->allocPage(file, *newPageNum, newPage);

@@ -365,6 +365,9 @@ namespace badgerdb {
         }
     }
 
+/*
+ * Helper method for insertEntry
+*/
     void BTreeIndex::insertInternal(int k, RecordId x,
                                     NonLeafNodeInt *cursor,
                                     void *child, RecordId cursorRID, PageId child_page_id) {

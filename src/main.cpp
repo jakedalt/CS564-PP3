@@ -78,11 +78,11 @@ void test_int_out_of_bound();
 void randomIntTests();
 void test2();
 void test3();
-void test4_out_of_bound();
-void test5_noncontiguous_random();
-void test6_contiguous_ascending_stress();
-void test7contiguous_descending_stress();
-void test8_contiguous_random_stress();
+void test4();
+void test5();
+void test6();
+void test7();
+void test8();
 void errorTests();
 void deleteRelation();
 
@@ -188,7 +188,7 @@ void test3()
 	deleteRelation();
 }
 
-void test4_out_of_bound() {
+void test4() {
   std::cout << "---------------------" << std::endl;
   std::cout << "test4_out_of_bound" << std::endl;
   createRelationRandom();
@@ -196,7 +196,7 @@ void test4_out_of_bound() {
   deleteRelation();
 }
 
-void test5_noncontiguous_random() {
+void test5() {
   std::cout << "---------------------" << std::endl;
   std::cout << "test5_noncontiguous_random" << std::endl;
   std::vector<int> *sortedvec =
@@ -206,7 +206,7 @@ void test5_noncontiguous_random() {
   deleteRelation();
 }
 
-void test6_contiguous_ascending_stress() {
+void test6()) {
   std::cout << "---------------------" << std::endl;
   std::cout << "test6_contiguous_ascending_stress" << std::endl;
   relationSize = 350000;
@@ -215,7 +215,7 @@ void test6_contiguous_ascending_stress() {
   deleteRelation();
 }
 
-void test7_contiguous_descending_stress() {
+void test7() {
   std::cout << "---------------------" << std::endl;
   std::cout << "test7_contiguous_descending_stress" << std::endl;
   createRelationBackward();
@@ -223,7 +223,7 @@ void test7_contiguous_descending_stress() {
   deleteRelation();
 }
 
-void test8_contiguous_random_stress() {
+void test8() {
   std::cout << "---------------------" << std::endl;
   std::cout << "test8_contiguous_random_stress" << std::endl;
   createRelationRandom();

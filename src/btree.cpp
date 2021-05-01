@@ -47,7 +47,7 @@ namespace badgerdb {
                            const int attrByteOffset,
                            const Datatype attrType) {
         // Add your code below. Please do not remove this line.
-
+    	std::cout << "starting\n";
         std::ostringstream idxStr;
         idxStr << relationName << '.' << attrByteOffset;
         // indexName is the name of the index file
@@ -74,20 +74,25 @@ namespace badgerdb {
 
         // index file does not exist
         try {
-        	//std::cout << "opening file";
+        	std::cout << "opening file\n";
             file = new BlobFile(outIndexName, true);
-            //std::cout << "opened file";
+            
             Page *headerPage;
             PageId *pageNum = nullptr;
+            std::cout << "creating header\n";
             bufMgr->allocPage(file, *pageNum, headerPage);
+            std::cout << "allocated header\n";
             bufMgr->unPinPage(file, *pageNum, true);
             headerPageNum = *pageNum; // set headerPageNum
             Page *rootPage;
             PageId *rPageNum;
+            std::cout << "creating root\n";
             bufMgr->allocPage(file, *rPageNum, rootPage);
+            std::cout << "alloced index\n";
             bufMgr->unPinPage(file, *rPageNum, true);
             rootPageNum = *rPageNum; // set rootPageNum
 
+            std::cout << "creating index\n";
             // setting indexMetaInfo variables
             IndexMetaInfo *idxMeta = (IndexMetaInfo *) headerPage;
             //idxMeta = (IndexMetaInfo*)headerPage;
@@ -97,17 +102,19 @@ namespace badgerdb {
             strncpy((char *) (&(idxMeta->relationName)), relationName.c_str(), 20);
             idxMeta->relationName[19] = 0;
 
+            std::cout << "creating root leaf\n";
             LeafNodeInt *leafInt = (LeafNodeInt *) rootPage; // creating leafNodeObject, not sure
             leafInt->rightSibPageNo = 0; // root node does not have right sibling yet
             rootIsLeaf = 1;
 
+            std::cout << "scanning file\n";
             // setting up variables needed for file scanning
             FileScan fileScan(relationName, bufMgr);
             RecordId rid;
             std::string recordPointer;
 
             bool readingFile = true; // keeps track of if end of file hasn't been reached
-
+            std::cout << "reading file\n";
             // inserting entries for every tuple in base relation
             while (readingFile) {
                 try {
@@ -196,6 +203,7 @@ namespace badgerdb {
         //TODO We created a private int variable called rootIsLeaf that should
         // be changed to 0 when root is no longer a leaf
         //bool rootIsLeaf = true;
+        std::cout << "starting\n";
         int* k = (int *) key;
         if (rootPageNum == NULL) {
             //create a new page into the buffer manager and add to the b+ tree root leaf
@@ -318,7 +326,7 @@ namespace badgerdb {
                 virtualNode[i] = *k;
                 //newLeaf->IS_LEAF = true;
 
-                cursor->level++;
+                cursor->level=1;
                 //cursor->size = (leafOccupancy + 1) / 2;
                 //newLeaf->size
                 //    = leafOccupancy + 1 - (leafOccupancy + 1) / 2;
@@ -479,8 +487,8 @@ namespace badgerdb {
 
             virtualPtr[i + 1] = leaf_child->ridArray[0].page_number;
             //newInternal->IS_LEAF = false;
-            cursor->level++;
-            newInternal->level = cursor->level + 1;
+            cursor->level = 0
+            newInternal->level = 1
             //cursor->size
             //    = (leafOccupancy + 1) / 2;
 

@@ -343,9 +343,9 @@ class BTreeIndex {
 	**/
 	void insertEntry(const void* key, const RecordId rid);
 
-  void insertInternal(RecordId x,
+  void insertInternal(int k, RecordId x,
                             NonLeafNodeInt* cursor,
-                            LeafNodeInt* child);
+                            void* child, RecordId cursorRID, PageId child_page_id);
 
   /**
 	 * Begin a filtered scan of the index.  For instance, if the method is called 

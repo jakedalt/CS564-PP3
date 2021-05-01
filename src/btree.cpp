@@ -205,12 +205,17 @@ namespace badgerdb {
         //bool rootIsLeaf = true;
         std::cout << "starting\n";
         int* k = (int *) key;
-        if (rootPageNum == NULL) {
+        if (rootPageNum == 2) {
             //create a new page into the buffer manager and add to the b+ tree root leaf
             LeafNodeInt *root = new LeafNodeInt();
+            Page *newRootPage;
+            PageId *nRootPageNum;
+            bufMgr->allocPage(file, *nRootPageNum, newRootPage);
+            bufMgr->unPinPage(file, *nRootPageNum, true);
             root->keyArray[0] = *k;
             root->ridArray[0] = rid;
-            root->rightSibPageNo = NULL;
+            root->rightSibPageNo = 0;
+            rootPageNum = *nRootPageNum;
             return;
         } else {
             //traverse through the tree and find where the key,id pair should be inserted
@@ -227,7 +232,7 @@ namespace badgerdb {
             bufMgr->unPinPage(file, idxMeta->rootPageNo, false);
 
             bool isLeaf = false;
-            RIDKeyPair<int> *pair;
+            RIDKeyPair<int> *pair = new RIDKeyPair<int>();
             pair->set(rid, *k);
 
             RecordId place_rec_id;

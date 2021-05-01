@@ -159,6 +159,11 @@ struct NonLeafNodeInt{
    * Stores page numbers of child pages which themselves are other non-leaf/leaf nodes in the tree.
    */
 	PageId pageNoArray[ INTARRAYNONLEAFSIZE + 1 ];
+
+  /**
+   * Stores size of occupied key.
+   */
+  int size;
 };
 
 
@@ -185,6 +190,11 @@ struct LeafNodeInt{
 	 * This linking of leaves allows to easily move from one leaf to the next leaf during index scan.
    */
 	PageId rightSibPageNo;
+
+  /**
+   * Stores size of occupied key.
+   */
+  int size;
 };
 
 
@@ -343,9 +353,22 @@ class BTreeIndex {
 	**/
 	void insertEntry(const void* key, const RecordId rid);
 
-  void insertInternal(int k, RecordId x,
-                            NonLeafNodeInt* cursor,
-                            void* child, RecordId cursorRID, PageId child_page_id);
+  void insertEntryHelper(const int key,
+          const RecordId rid,
+          PageId currPageId,
+          int* middleValueFromChild,
+          PageId* newlyCreatedPageId,
+          bool isLeafBool);
+
+  void insertNonLeafNode(int key,
+            PageId childPageId,
+          NonLeafNodeInt* node,
+          int index);
+
+  void insertLeafNode(int key,
+            RecordId rid,
+            LeafNodeInt* node,
+          int index);
 
   /**
 	 * Begin a filtered scan of the index.  For instance, if the method is called 

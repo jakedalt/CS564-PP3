@@ -185,367 +185,305 @@ namespace badgerdb {
 
     }
 
+/**
+* Insert a key and a record ID to the appropriate position and array of the given leaf node.
+*
+* @param key   key to be inserted to keyArray
+* @param rid   rid to be inserted to ridArray
+* @param node  corresponding leaf node to be modified
+* @param index index of a particular key and rid to be inserted
+*/
+void BTreeIndex::insertLeafNode(int key,
+				    RecordId rid,
+				    LeafNodeInt* node,
+					int index) {
+	// Shift to the right key after index and insert key at the appropriate position
+	memmove(&node->keyArray[index + 1], &node->keyArray[index], sizeof(int) * (INTARRAYLEAFSIZE - index - 1));
+	node->keyArray[index] = key;
+	
+	// Do the same for rid
+	memmove(&node->ridArray[index + 1], &node->ridArray[index], sizeof(RecordId) * (INTARRAYLEAFSIZE - index - 1));
+	node->ridArray[index] = rid;
+
+	// Increment size
+	node->size += 1;
+}
+
+/**
+* Insert a key and a page ID to the appropriate position and array of the given non-leaf node.
+*
+* @param key   key to be inserted to keyArray
+* @param childPageId   pageid to be inserted to pageNoArray
+* @param node  corresponding non-leaf node to be modified
+* @param index index of a particular key and pageid to be inserted
+*/
+void BTreeIndex::insertNonLeafNode(int key,
+				    PageId childPageId,
+					NonLeafNodeInt* node,
+					int index) {
+	// Shift to the right key after index and insert key at the appropriate position
+	memmove(&node->keyArray[index + 1], &node->keyArray[index], sizeof(int) * (INTARRAYNONLEAFSIZE - index - 1));
+	node->keyArray[index] = key;
+	
+	// Do the same for pid inside pageNoArray
+	memmove(&node->pageNoArray[index + 2], &node->pageNoArray[index + 1], sizeof(PageId) * (INTARRAYNONLEAFSIZE - index - 1));
+	node->pageNoArray[index + 1] = childPageId;
+
+	// Increment size
+	node->size += 1;
+}
+
+/**
+* Helper function to do the recurion of inserting a key and a rid to the tree.
+*
+* @param key   key to be inserted
+* @param rid   rid to be inserted
+* @param currPageId  the current page which holds the node
+* @param middleValueFromChild a callback parameter to pass back the middle value to its parent
+* @param newlyCreatedPageId a callback parameter to pass back the splitted node's pageID to its parent
+* @param isLeafBool whether this node is a leaf or not
+*/
+void BTreeIndex::insertEntryHelper(const int key,
+					const RecordId rid,
+					PageId currPageId,
+					int* middleValueFromChild,
+					PageId* newlyCreatedPageId,
+					bool isLeafBool) 
+{
+	// Read page, which is a node
+	Page *currNode;
+  	bufMgr->readPage(file, currPageId, currNode);
+
+  	// Base Case: current node is a leaf node
+  	if (isLeafBool) {
+  		LeafNodeInt* currLeafNode = (LeafNodeInt *)currNode;
+
+  		// Index of the new key to be inserted
+  		int index = currLeafNode->size;
+  		for(int i = 0; i < currLeafNode->size; i++) {
+  			if (currLeafNode->keyArray[i] > key) {
+  				index = i;
+  				break;
+  			}
+  		}
+
+  		// Check if leaf is not full, if true directly insert to the leaf
+  		if (currLeafNode->ridArray[INTARRAYLEAFSIZE - 1].page_number == Page::INVALID_NUMBER) {
+  		//if (currLeafNode->size < INTARRAYLEAFSIZE) {	
+			insertLeafNode(key, rid, currLeafNode, index);
+  			bufMgr->unPinPage(file, currPageId, true);
+  			*middleValueFromChild = 0;
+  			*newlyCreatedPageId = 0;
+  		} 
+  		// Otherwise, split node into 2 and pass back the middle value
+  		else {
+  			// Allocate a new page for the right split
+  			PageId newPageId;
+  			Page* newNode;
+  			bufMgr->allocPage(file, newPageId, newNode);
+  			memset(newNode, 0, Page::SIZE);
+  			LeafNodeInt* newLeafNode = (LeafNodeInt *)newNode;
+
+  			// Split and add new value appropriately depending on the position of the index
+  			int mid = INTARRAYLEAFSIZE / 2;
+  			if (INTARRAYLEAFSIZE % 2 == 1 && index > mid) {
+				mid = mid + 1;
+			}
+
+			for(int i = mid; i < INTARRAYLEAFSIZE; i++) {
+				newLeafNode->keyArray[i-mid] = currLeafNode->keyArray[i];
+				newLeafNode->ridArray[i-mid] = currLeafNode->ridArray[i];
+				currLeafNode->keyArray[i] = 0;
+				currLeafNode->ridArray[i].page_number = Page::INVALID_NUMBER;
+			}
+
+  			// Set size appropriately
+  			newLeafNode->size = INTARRAYLEAFSIZE - mid;
+	  		currLeafNode->size = mid;
+
+			// Insert to right node
+			if(index > INTARRAYLEAFSIZE / 2) {
+				insertLeafNode(key, rid, newLeafNode, index - mid);
+			}
+			// Insert to left node
+			else {
+				insertLeafNode(key, rid, currLeafNode, index);
+			}
+
+			// Set rightSibPageNo appropriately
+			newLeafNode->rightSibPageNo = currLeafNode->rightSibPageNo;
+  			currLeafNode->rightSibPageNo = newPageId;
+
+  			// Unpin the nodes
+  			bufMgr->unPinPage(file, currPageId, true);
+  			bufMgr->unPinPage(file, newPageId, true);
+
+  			// Return values using pointers
+  			*middleValueFromChild = newLeafNode->keyArray[0];
+  			*newlyCreatedPageId = newPageId;
+  		}
+  	}
+  	// Recursive Case: current node is not a leaf node
+  	else {
+  		NonLeafNodeInt *currNonLeafNode = (NonLeafNodeInt *)currNode;
+
+  		// Find the correct child node
+  		int childIndex = currNonLeafNode->size;
+  		for(int i = 0; i < currNonLeafNode->size; i++) {
+  			if (currNonLeafNode->keyArray[i] > key) {
+  				childIndex = i;
+  				break;
+  			}
+  		}
+  		PageId currChildId = currNonLeafNode->pageNoArray[childIndex];
+
+  		// Recursive call to the child
+		int newChildMiddleKey;
+		PageId newChildId;
+		insertEntryHelper(key, rid, currChildId, &newChildMiddleKey, &newChildId, currNonLeafNode->level == 1);
+
+		// If there is no split in child node
+		if ((int) newChildId == 0) {
+		  bufMgr->unPinPage(file, currPageId, false);
+		  *middleValueFromChild = 0;
+		  *newlyCreatedPageId = 0;
+		}
+		// If there is a split in child node
+		else {
+	  		// Index of the new middle key from children to be inserted
+	  		int index = currNonLeafNode->size;
+	  		for(int i = 0; i < currNonLeafNode->size; i++) {
+	  			if (currNonLeafNode->keyArray[i] > newChildMiddleKey) {
+	  				index = i;
+	  				break;
+	  			}
+	  		}
+
+	  		// Check if node is not full, if true directly insert middle key to the node
+  			if (currNonLeafNode->pageNoArray[INTARRAYNONLEAFSIZE] == Page::INVALID_NUMBER) {
+  			//if (currNonLeafNode->size < INTARRAYNONLEAFSIZE) {
+  				insertNonLeafNode(newChildMiddleKey, newChildId, currNonLeafNode, index);
+  				bufMgr->unPinPage(file, currPageId, true);
+	  			*middleValueFromChild = 0;
+	  			*newlyCreatedPageId = 0;
+  			}
+  			// Otherwise, split node into 2 and pass back the middle value
+  			else {
+	  			// Allocate a new page for the right split
+	  			PageId newPageId;
+	  			Page* newNode;
+	  			bufMgr->allocPage(file, newPageId, newNode);
+	  			memset(newNode, 0, Page::SIZE);
+	  			NonLeafNodeInt* newNonLeafNode = (NonLeafNodeInt *)newNode;
+	  			newNonLeafNode->level = currNonLeafNode->level;
+
+	  			// Split nodes depending on the cases
+	  			int mid = INTARRAYNONLEAFSIZE / 2;
+	  			// Case 1: the new child will be pushed
+	  			if (index == mid) {
+	  				for(int i = mid; i < INTARRAYNONLEAFSIZE; i++) {
+						newNonLeafNode->keyArray[i-mid] = currNonLeafNode->keyArray[i];
+						newNonLeafNode->pageNoArray[i-mid+1] = currNonLeafNode->pageNoArray[i+1];
+						currNonLeafNode->keyArray[i] = 0;
+						currNonLeafNode->pageNoArray[i+1] = Page::INVALID_NUMBER;
+					}
+					newNonLeafNode->pageNoArray[0] = newChildId;
+
+					// Set size appropriately
+					currNonLeafNode->size = mid;
+					newNonLeafNode->size = INTARRAYNONLEAFSIZE - mid;
+
+		  			// Unpin the nodes
+		  			bufMgr->unPinPage(file, currPageId, true);
+		  			bufMgr->unPinPage(file, newPageId, true);
+
+					// Return values using pointers
+		  			*middleValueFromChild = newChildMiddleKey;
+		  			*newlyCreatedPageId = newPageId;
+	  			}
+	  			// Case 2: if new child will not be pushed
+	  			else {
+	  				if (INTARRAYNONLEAFSIZE % 2 == 0 && index < mid) {
+	  					mid -= 1;
+	  				}
+	  				for(int i = mid + 1; i < INTARRAYNONLEAFSIZE; i++) {
+						newNonLeafNode->keyArray[i-mid-1] = currNonLeafNode->keyArray[i];
+						newNonLeafNode->pageNoArray[i-mid-1] = currNonLeafNode->pageNoArray[i];
+						currNonLeafNode->keyArray[i] = 0;
+						currNonLeafNode->pageNoArray[i] = Page::INVALID_NUMBER;
+					}
+
+					// Return values using pointers
+					*middleValueFromChild = currNonLeafNode->keyArray[mid];
+					*newlyCreatedPageId = newPageId;
+
+					// Clear already pushed value
+					currNonLeafNode->keyArray[mid] = 0;
+
+					// Set size appropriately
+					currNonLeafNode->size = mid;
+					newNonLeafNode->size = INTARRAYNONLEAFSIZE - mid - 1;
+
+					// Insert new value to left or right node appropriately
+					if (index < INTARRAYNONLEAFSIZE / 2) {
+						insertNonLeafNode(newChildMiddleKey, newChildId, currNonLeafNode, index);
+					} else {
+						insertNonLeafNode(newChildMiddleKey, newChildId, newNonLeafNode, index - mid);
+					}
+
+		  			// Unpin the nodes
+		  			bufMgr->unPinPage(file, currPageId, true);
+		  			bufMgr->unPinPage(file, newPageId, true);
+	  			}
+  			}
+		}
+  	}
+}
+
 // -----------------------------------------------------------------------------
 // BTreeIndex::insertEntry
 // -----------------------------------------------------------------------------
-/**
-	 * Insert a new entry using the pair <value,rid>. 
-	 * Start from root to recursively find out the leaf to insert the entry in. The insertion may cause splitting of leaf node.
-	 * This splitting will require addition of new leaf page number entry into the parent non-leaf, which may in-turn get split.
-	 * This may continue all the way upto the root causing the root to get split. If root gets split, metapage needs to be changed accordingly.
-	 * Make sure to unpin pages as soon as you can.
-   * @param key			Key to insert, pointer to integer/double/char string
-   * @param rid			Record ID of a record whose entry is getting inserted into the index.
-	**/
-    void BTreeIndex::insertEntry(const void *key, const RecordId rid) {
-        // Add your code below. Please do not remove this line.
 
-        //TODO We created a private int variable called rootIsLeaf that should
-        // be changed to 0 when root is no longer a leaf
-        //bool rootIsLeaf = true;
-        std::cout << "starting\n";
-        int* k = (int *) key;
-        if (rootPageNum == NULL) {
-            //create a new page into the buffer manager and add to the b+ tree root leaf
-            LeafNodeInt *root = new LeafNodeInt();
-            root->keyArray[0] = *k;
-            root->ridArray[0] = rid;
-            root->rightSibPageNo = NULL;
-            return;
-        } else {
-            //traverse through the tree and find where the key,id pair should be inserted
+void BTreeIndex::insertEntry(const void *key, const RecordId rid) 
+{
+	// Call the helper function to do the recursion while retrieving back new middle value and pageId if there is a split
+	int middleValueFromChild;
+	PageId newlyCreatedPageId;
+	insertEntryHelper(*(int*)key, rid, rootPageNum, &middleValueFromChild, &newlyCreatedPageId, rootIsLeaf);
 
-            // need to compare the new key id pair starting from the root and moving along the leaves.
+	// If there is a split to the root, create a new root
+	if ((int) newlyCreatedPageId != 0) {
+	  	// Allocate a new page for this new root
+	  	PageId newPageId;
+		Page* newPage;
+		bufMgr->allocPage(file, newPageId, newPage);
+		memset(newPage, 0, Page::SIZE);
+		NonLeafNodeInt* newRoot = (NonLeafNodeInt *)newPage;
+		
+		// Update the new page appropriately
+		newRoot->keyArray[0] = middleValueFromChild;
+		newRoot->pageNoArray[0] = rootPageNum;
+		newRoot->pageNoArray[1] = newlyCreatedPageId;
+		newRoot->size = 1;
+		if(rootIsLeaf) {
+			newRoot->level = 1;
+		} else {
+			newRoot->level = 0;
+		}
+		rootIsLeaf = false;
 
-            Page *RootPage;
-            Page *HeaderPage; // use header page for index
-            bufMgr->readPage(file, headerPageNum, HeaderPage);
-            bufMgr->unPinPage(file, headerPageNum, false);
-            IndexMetaInfo *idxMeta = new IndexMetaInfo();
-            idxMeta = (IndexMetaInfo *) HeaderPage;
-            bufMgr->readPage(file, idxMeta->rootPageNo, RootPage);
-            bufMgr->unPinPage(file, idxMeta->rootPageNo, false);
+		// Update global variable and IndexMetaInfo page appropriately
+		Page *meta;
+		bufMgr->readPage(file, headerPageNum, meta);
+		IndexMetaInfo *metadata = (IndexMetaInfo *)meta;
+		metadata->rootPageNo = newPageId;
+		rootPageNum = newPageId;
 
-            bool isLeaf = false;
-            RIDKeyPair<int> *pair;
-            pair->set(rid, *k);
-
-            RecordId place_rec_id;
-            Page *place_page;
-            NonLeafNodeInt *cursor = (NonLeafNodeInt *) RootPage; //get the current root page using pageID
-
-            NonLeafNodeInt *parent;
-
-            while (!isLeaf) {
-
-                parent = cursor;
-
-                for (int i = 0; i < nodeOccupancy; i++) {
-                    Page *nextPage;
-                    bufMgr->readPage(file, cursor->pageNoArray[i], nextPage);
-                    bufMgr->unPinPage(file, cursor->pageNoArray[i], false);
-
-                    for (PageIterator iter = nextPage->begin();
-                         iter != nextPage->end();
-                         ++iter) {
-                        RIDKeyPair<int> *comparePair;
-                        comparePair->set(iter.getCurrentRecord(), cursor->keyArray[i]);
-                        if (pair < comparePair) {
-                            //go to the left side of the tree
-                            place_rec_id = iter.getCurrentRecord();
-                            place_page = nextPage;
-                            isLeaf = true;
-                            break;
-                        }
-
-                    }
-
-                    if (i == leafOccupancy - 1) {
-                        //reached the end of the current leaf need to go to the next leaf node
-                        break;
-                    }
-
-                }
-            }
-            //LeafNodeInt curLeafNode;
-            //using the while loop constantly move through the children from the root while comparing the each the entries in the btree to find the leafe node to place the key value pair
-
-            LeafNodeInt *found = (LeafNodeInt *) place_page;
-            //found->ridArray.length
-            //need to figure out how to get the length of the keys in the current leaf node
-            if (0 < leafOccupancy) {
-                //the leaf we found to insert the record id key is not over flowing and we should traverse through it till the key fits
-                int i = 0;// found the index where the current pair is greater than the left less than the right
-                while (rid.page_number > found->ridArray[i].page_number
-                       && i < leafOccupancy) {
-                    i++;
-                }
-
-                for (int j = leafOccupancy;
-                     j > i; j--) {
-                    found->ridArray[j]
-                            = found->ridArray[j - 1];
-                }
-
-                //we found space in the leaf node to set the rid and key
-                found->ridArray[i] = rid;
-                //found->keyArray[i] = key;
-            } else {
-                // handle the case here the current leafe node is overfilling
-                LeafNodeInt *newLeaf = new LeafNodeInt;
-                Page *newLeafPage;
-                PageId *nLeafPageNum;
-                bufMgr->allocPage(file, *nLeafPageNum, newLeafPage);
-                bufMgr->unPinPage(file, *nLeafPageNum, true);
-
-                int virtualNode[leafOccupancy + 1];
-
-                // Update cursor to virtual
-                // node created
-                for (int i = 0; i < leafOccupancy; i++) {
-                    virtualNode[i]
-                            = cursor->keyArray[i];
-                }
-                int i = 0, j;
-
-                // Traverse to find where the new
-                // node is to be inserted
-                while (*k > virtualNode[i]
-                       && i < leafOccupancy) {
-                    i++;
-                }
-
-                // Update the current virtual
-                // Node to its previous
-                for (int j = leafOccupancy + 1;
-                     j > i; j--) {
-                    virtualNode[j]
-                            = virtualNode[j - 1];
-                }
-
-                virtualNode[i] = *k;
-                //newLeaf->IS_LEAF = true;
-
-                cursor->level=1;
-                //cursor->size = (leafOccupancy + 1) / 2;
-                //newLeaf->size
-                //    = leafOccupancy + 1 - (leafOccupancy + 1) / 2;
-
-                cursor->pageNoArray[sizeof(cursor->keyArray)]
-                        = rid.page_number;
-
-                newLeaf->rightSibPageNo
-                        = cursor->pageNoArray[leafOccupancy];
-
-                cursor->pageNoArray[leafOccupancy] = NULL;
-
-                // Update the current virtual
-                // Node's key to its previous
-                for (i = 0;
-                     i < sizeof(cursor->keyArray); i++) {
-                    cursor->keyArray[i]
-                            = virtualNode[i];
-                }
-
-                // Update the newLeaf key to
-                // virtual Node
-                for (i = 0, j = sizeof(cursor->keyArray);
-                     i < sizeof(newLeaf->ridArray);
-                     i++, j++) {
-                    newLeaf->keyArray[i]
-                            = virtualNode[j];
-                }
-
-                // If cursor is the root node
-                if (place_rec_id.page_number == rootPageNum) {
-
-                    // Create a new Node
-                    NonLeafNodeInt *newRoot = new NonLeafNodeInt;
-                    Page *newRootPage;
-                    PageId *nRootPageNum;
-                    bufMgr->allocPage(file, *nRootPageNum, newRootPage);
-                    bufMgr->unPinPage(file, *nRootPageNum, true);
-                    rootPageNum = *nRootPageNum; // set rootPageNum
-
-                    // Update rest field of
-                    // B+ Tree Node
-                    newRoot->pageNoArray[0] = newLeaf->ridArray[0].page_number;
-                    int index;
-                    for (i = 0;
-                         i < sizeof(cursor->keyArray); i++) {
-                        newRoot->pageNoArray[i] = cursor->pageNoArray[i];
-                        index = i;
-                    }
-                    newRoot->pageNoArray[index + 1] = newLeaf->rightSibPageNo;
-                    rootPageNum = newRoot->pageNoArray[0];
-                } else {
-
-                    // Recursive Call for
-                    // insert in internal
-                    insertInternal(*k,newLeaf->ridArray[sizeof(cursor->keyArray)],
-                                   parent,
-                                   newLeaf, place_rec_id, *nLeafPageNum);
-                }
-
-            }
-        }
-    }
-
-    void BTreeIndex::insertInternal(int k, RecordId x,
-                                    NonLeafNodeInt *cursor,
-                                    void *child, RecordId cursorRID, PageId child_page_id) {
-        LeafNodeInt *leaf_child = (LeafNodeInt *) child;
-        // If we doesn't have overflow
-        if (sizeof(cursor->keyArray) < leafOccupancy) {
-            int i = 0;
-
-            // Traverse the child node
-            // for current cursor node
-            while (k > cursor->keyArray[i]
-                   && i < sizeof(cursor->keyArray)) {
-                i++;
-            }
-
-            // Traverse the cursor node
-            // and update the current key
-            // to its previous node key
-            for (int j = sizeof(cursor->keyArray);
-                 j > i; j--) {
-
-                cursor->keyArray[j]
-                        = cursor->keyArray[j - 1];
-            }
-
-            // Traverse the cursor node
-            // and update the current ptr
-            // to its previous node ptr
-            for (int j = sizeof(cursor->keyArray) + 1;
-                 j > i + 1; j--) {
-                cursor->pageNoArray[j]
-                        = cursor->pageNoArray[j - 1];
-            }
-
-            cursor->keyArray[i] = k;
-            cursor->pageNoArray[i + 1] = child_page_id;
-        }
-
-            // For overflow, break the node
-        else {
-
-            // For new Interval
-            NonLeafNodeInt *newInternal = new NonLeafNodeInt;
-            Page *newIntervalPage;
-            PageId *nPageNum;
-            bufMgr->allocPage(file, *nPageNum, newIntervalPage);
-            bufMgr->unPinPage(file, *nPageNum, true);
-            rootPageNum = *nPageNum; // set rootPageNum
-
-            int virtualKey[leafOccupancy + 1];
-            PageId virtualPtr[leafOccupancy + 2];
-
-            // Insert the current list key
-            // of cursor node to virtualKey
-            for (int i = 0; i < leafOccupancy; i++) {
-                virtualKey[i] = cursor->keyArray[i];
-            }
-
-            // Insert the current list ptr
-            // of cursor node to virtualPtr
-            for (int i = 0; i < leafOccupancy + 1; i++) {
-                virtualPtr[i] = cursor->pageNoArray[i];
-            }
-
-            int i = 0, j;
-
-            // Traverse to find where the new
-            // node is to be inserted
-            while (k > virtualKey[i]
-                   && i < leafOccupancy) {
-                i++;
-            }
-
-            // Traverse the virtualKey node
-            // and update the current key
-            // to its previous node key
-            for (int j = leafOccupancy + 1;
-                 j > i; j--) {
-
-                virtualKey[j]
-                        = virtualKey[j - 1];
-            }
-
-            virtualKey[i] = k;
-
-            // Traverse the virtualKey node
-            // and update the current ptr
-            // to its previous node ptr
-            for (int j = leafOccupancy + 2;
-                 j > i + 1; j--) {
-                virtualPtr[j]
-                        = virtualPtr[j - 1];
-            }
-
-            virtualPtr[i + 1] = leaf_child->ridArray[0].page_number;
-            //newInternal->IS_LEAF = false;
-            cursor->level = 0;
-            newInternal->level = 1;
-            //cursor->size
-            //    = (leafOccupancy + 1) / 2;
-
-            //newInternal->size
-            //    = leafOccupancy - (leafOccupancy + 1) / 2;
-
-            // Insert new node as an
-            // internal node
-            for (i = 0, j = sizeof(cursor->keyArray) + 1;
-                 i < sizeof(newInternal->keyArray);
-                 i++, j++) {
-
-                newInternal->keyArray[i]
-                        = virtualKey[j];
-            }
-
-            for (i = 0, j = sizeof(cursor->keyArray) + 1;
-                 i < sizeof(newInternal->keyArray) + 1;
-                 i++, j++) {
-
-                newInternal->pageNoArray[i]
-                        = virtualPtr[j];
-            }
-
-            // If cursor is the root node
-            if (cursorRID.page_number == rootPageNum) {
-
-                // Create a new root node
-                NonLeafNodeInt *newRoot = new NonLeafNodeInt;
-                newRoot->level = 0;
-                Page *newPage;
-                PageId *newPageNum;
-                bufMgr->allocPage(file, *newPageNum, newPage);
-                bufMgr->unPinPage(file, *newPageNum, true);
-                rootPageNum = *newPageNum; // set rootPageNum
-
-                // Update key value
-                newRoot->keyArray[0]
-                        = cursor->keyArray[sizeof(cursor->keyArray)];
-
-                // Update rest field of
-                // B+ Tree Node
-                newRoot->pageNoArray[0] = cursorRID.page_number;
-                newRoot->pageNoArray[1] = *nPageNum;
-                //newRoot->IS_LEAF = false;
-                //newRoot->size = 1;
-                rootPageNum = *newPageNum;
-            } else {
-
-                // Recursive Call to insert
-                // the data
-                insertInternal(k,x,
-                               cursor,
-                               newInternal,cursorRID,child_page_id);
-            }
-        }
-    }
+		// Unpin the root and the IndexMetaInfo page
+		bufMgr->unPinPage(file, newPageId, true);
+		bufMgr->unPinPage(file, headerPageNum, true);
+	}
+}
 
 
 

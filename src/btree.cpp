@@ -487,8 +487,8 @@ namespace badgerdb {
 
             virtualPtr[i + 1] = leaf_child->ridArray[0].page_number;
             //newInternal->IS_LEAF = false;
-            cursor->level = 0
-            newInternal->level = 1
+            cursor->level = 0;
+            newInternal->level = 1;
             //cursor->size
             //    = (leafOccupancy + 1) / 2;
 
